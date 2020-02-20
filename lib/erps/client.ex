@@ -5,21 +5,24 @@ defmodule Erps.Client do
     end
   end
 
-  defstruct [:module, :socket]
+  defstruct [:module, :socket, :server, :port, :data]
 
-  def start(module, target, opts) do
-    inner_opts = Keyword.take(opts, [:port])
-    GenServer.start(__MODULE__, {module, target, inner_opts}, opts)
+  def start(module, state, opts) do
+    inner_opts = Keyword.take(opts, [:server, :port])
+    GenServer.start(__MODULE__, {module, state, inner_opts}, opts)
   end
 
-  def start_link(module, target, opts) do
-    inner_opts = Keyword.take(opts, [:port])
-    GenServer.start_link(__MODULE__, {module, target, inner_opts}, opts)
+  def start_link(module, state, opts) do
+    inner_opts = Keyword.take(opts, [:server, :port])
+    GenServer.start_link(__MODULE__, {module, state, inner_opts}, opts)
   end
 
-  def init({module, target, inner_opts}) do
-    with {:ok, socket} <- :gen_tcp.connect(target, inner_opts[:port], [:binary, active: true]) do
-      {:ok, %__MODULE__{module: module, socket: socket}}
+  def init({module, start, opts}) do
+    port = opts[:port]
+    server = opts[:server]
+    with {:ok, socket} <- :gen_tcp.connect(server, port, [:binary, active: true]),
+         {:ok, init_state} <- module.init(start) do
+      {:ok, struct(__MODULE__, [module: module, socket: socket, data: init_state] ++ opts)}
     end
   end
 
@@ -37,8 +40,11 @@ defmodule Erps.Client do
   end
 
   def handle_info({:tcp, _socket, data}, state) do
-    {reply, from} = :erlang.binary_to_term(data)
-    GenServer.reply(from, reply)
+    case :erlang.binary_to_term(data) do
+      {:"$push", value} ->
+        state.module.handle_push(value, state.data)
+      {reply, from} -> GenServer.reply(from, reply)
+    end
     {:noreply, state}
   end
   def handle_info({:tcp_closed, socket}, state = %{socket: socket}) do

@@ -42,6 +42,13 @@ defmodule Erps.Server do
     {:reply, state.connections, state}
   end
 
+  def push(srv, value), do: GenServer.call(srv, {:"$push", value})
+  defp push_impl(push, state) do
+    bindata = :erlang.term_to_binary(push)
+    Enum.each(state.connections, &:gen_tcp.send(&1, bindata))
+    {:reply, :ok, state}
+  end
+
   #############################################################################
   ##
 
@@ -57,6 +64,9 @@ defmodule Erps.Server do
       {:reply, reply, data} ->
         {:reply, reply, %{state | data: data}}
     end
+  end
+  def handle_call(push = {:"$push", _}, _from, state) do
+    push_impl(push, state)
   end
 
   @spec handle_info(any, any) :: {:noreply, any}

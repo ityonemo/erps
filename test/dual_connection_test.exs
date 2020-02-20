@@ -8,8 +8,10 @@ defmodule ErpsTest.DualConnectionTest do
     @localhost {127, 0, 0, 1}
 
     def start_link(port) do
-      Erps.Client.start_link(__MODULE__, @localhost, port: port)
+      Erps.Client.start_link(__MODULE__, :ok, server: @localhost, port: port)
     end
+
+    def init(state), do: {:ok, state}
 
     def ping(srv), do: Erps.Client.call(srv, :ping)
   end
