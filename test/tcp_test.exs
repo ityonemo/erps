@@ -1,7 +1,6 @@
 defmodule ErpsTest.TcpTest do
   use ExUnit.Case, async: true
 
-
   defmodule TestClient do
     use Erps.Client
 
