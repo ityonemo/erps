@@ -7,6 +7,11 @@ defmodule Erps.Client do
 
   defstruct [:module, :socket]
 
+  def start(module, target, opts) do
+    inner_opts = Keyword.take(opts, [:port])
+    GenServer.start(__MODULE__, {module, target, inner_opts}, opts)
+  end
+
   def start_link(module, target, opts) do
     inner_opts = Keyword.take(opts, [:port])
     GenServer.start_link(__MODULE__, {module, target, inner_opts}, opts)
@@ -35,6 +40,9 @@ defmodule Erps.Client do
     {reply, from} = :erlang.binary_to_term(data)
     GenServer.reply(from, reply)
     {:noreply, state}
+  end
+  def handle_info({:tcp_closed, socket}, state = %{socket: socket}) do
+    {:stop, :tcp_closed, state}
   end
 
 end
