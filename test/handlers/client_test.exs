@@ -28,9 +28,15 @@ defmodule ErpsTest.ClientTest do
     end
     def init(val), do: {:ok, val}
 
+    @impl true
     def handle_push(msg, state) do
       if is_pid(state), do: send(state, :pong)
       msg
+    end
+
+    @impl true
+    def terminate(reason, state) do
+      if is_pid(state), do: send(state, reason)
     end
   end
 
@@ -49,6 +55,15 @@ defmodule ErpsTest.ClientTest do
       Erps.Server.push(svr, {:stop, :normal, :ok})
       Process.sleep(20)
       refute Process.alive?(client)
+    end
+  end
+
+  describe "the terminate/2 callback is called" do
+    test "when the server pushes a stop command", %{server: svr} do
+      Client.start_link(svr)
+      Process.sleep(20)
+      Erps.Server.push(svr, {:stop, :normal, self()})
+      assert_receive :normal
     end
   end
 

@@ -7,6 +7,14 @@ defmodule Erps.Client do
 
   defstruct [:module, :socket, :server, :port, :data]
 
+  @typep t :: %__MODULE__{
+    module: module,
+    socket: :gen_tcp.socket,
+    server: :inet.address,
+    port: :inet.port_number,
+    data: term,
+  }
+
   def start(module, state, opts) do
     inner_opts = Keyword.take(opts, [:server, :port])
     GenServer.start(__MODULE__, {module, state, inner_opts}, opts)
@@ -65,6 +73,15 @@ defmodule Erps.Client do
     end
   end
 
+  @impl true
+  @spec terminate(reason, t) :: term
+    when reason: :normal | :shutdown | {:shutdown, term}
+  def terminate(reason, state = %{module: module}) do
+    if function_exported?(module, :terminate, 2) do
+      module.terminate(reason, state.data)
+    end
+  end
+
   #############################################################################
   ## API Definition
 
@@ -83,6 +100,14 @@ defmodule Erps.Client do
     {:noreply, new_state}
     | {:stop, reason :: term, new_state}
   when new_state: term
+
+  @doc """
+  Invoked when the client is about to exit, usually due to `handle_push/2`
+  sending a `{:stop, reason, new_state}` tuple, but also if the TCP
+  connection happens to go down.
+  """
+  @callback terminate(reason, state :: term) :: term
+  when reason: :normal | :shutdown | {:shutdown, term}
 
   @optional_callbacks handle_push: 2
 end
