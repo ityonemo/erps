@@ -42,6 +42,17 @@ defmodule Erps.Server do
     {:reply, state.connections, state}
   end
 
+  def disconnect(srv, port), do: GenServer.call(srv, {:"$disconnect", port})
+  defp disconnect_impl(port, state = %{connections: connections}) do
+    if port in connections do
+      :gen_tcp.close(port)
+      new_connections = Enum.reject(connections, &(&1 == port))
+      {:reply, :ok, %{state | connections: new_connections}}
+    else
+      {:reply, {:error, :enoent}, state}
+    end
+  end
+
   def push(srv, value), do: GenServer.call(srv, {:"$push", value})
   defp push_impl(push, state) do
     bindata = :erlang.term_to_binary(push)
@@ -59,6 +70,7 @@ defmodule Erps.Server do
 
   def handle_call(:"$port", _from, state), do: port_impl(state)
   def handle_call(:"$connections", _from, state), do: connections_impl(state)
+  def handle_call({:"$disconnect", port}, _from, state), do: disconnect_impl(port, state)
   def handle_call({:"$srv", content}, from, state = %{module: module}) do
     case module.handle_call(content, from, state.data) do
       {:reply, reply, data} ->

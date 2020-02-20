@@ -21,6 +21,11 @@ defmodule ErpsTest.ClientTest do
 
     @localhost {127, 0, 0, 1}
 
+    def start(svr) do
+      {:ok, port} = Erps.Server.port(svr)
+      Erps.Client.start(__MODULE__,
+        :ok, server: @localhost, port: port)
+    end
     def start_link(svr) do
       {:ok, port} = Erps.Server.port(svr)
       Erps.Client.start_link(__MODULE__,
@@ -60,10 +65,22 @@ defmodule ErpsTest.ClientTest do
 
   describe "the terminate/2 callback is called" do
     test "when the server pushes a stop command", %{server: svr} do
-      Client.start_link(svr)
+      Client.start(svr)
       Process.sleep(20)
       Erps.Server.push(svr, {:stop, :normal, self()})
       assert_receive :normal
+    end
+
+    test "when the server disconnects", %{server: svr} do
+      Client.start(svr)
+      Process.sleep(20)
+      # instrument a pid into the client, using server push.
+      Erps.Server.push(svr, {:noreply, self()})
+      Process.sleep(20)
+      [client_port] = Erps.Server.connections(svr)
+      Erps.Server.disconnect(svr, client_port)
+      Process.sleep(20)
+      assert_receive :tcp_closed
     end
   end
 

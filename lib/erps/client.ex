@@ -1,4 +1,7 @@
 defmodule Erps.Client do
+
+  @behaviour GenServer
+
   defmacro __using__(_opts) do
     quote do
       @behaviour Erps.Client
@@ -7,7 +10,7 @@ defmodule Erps.Client do
 
   defstruct [:module, :socket, :server, :port, :data]
 
-  @typep t :: %__MODULE__{
+  @typep state :: %__MODULE__{
     module: module,
     socket: :gen_tcp.socket,
     server: :inet.address,
@@ -25,6 +28,7 @@ defmodule Erps.Client do
     GenServer.start_link(__MODULE__, {module, state, inner_opts}, opts)
   end
 
+  @impl true
   def init({module, start, opts}) do
     port = opts[:port]
     server = opts[:server]
@@ -37,16 +41,19 @@ defmodule Erps.Client do
   def call(srv, val), do: GenServer.call(srv, val)
   def cast(srv, val), do: GenServer.cast(srv, val)
 
+  @impl true
   def handle_call(val, from, state) do
     :gen_tcp.send(state.socket, :erlang.term_to_binary({:"$call", from, val}))
     {:noreply, state}
   end
 
+  @impl true
   def handle_cast(val, state) do
     :gen_tcp.send(state.socket, :erlang.term_to_binary({:"$cast", val}))
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:tcp, _socket, data}, state) do
     case :erlang.binary_to_term(data) do
       {:"$push", value} ->
@@ -60,21 +67,26 @@ defmodule Erps.Client do
     {:stop, :tcp_closed, state}
   end
 
-  defp push_impl(value, state = %{module: module}) do
-    value
-    |> module.handle_push(state.data)
-    |> case do
-      {:noreply, new_state} ->
-        {:noreply, %{state | data: new_state}}
-      {:stop, reason, new_state} ->
-        {:stop, reason, %{state | data: new_state}}
-      any -> any
-      # this lets us fail with a standard gen_server failure message.
+  @spec push_impl(push :: term, state) :: {:noreply, state} | {:stop, term, state}
+  defp push_impl(push, state = %{module: module}) do
+    if function_exported?(module, :handle_push, 2) do
+      push
+      |> module.handle_push(state.data)
+      |> case do
+        {:noreply, new_state} ->
+          {:noreply, %{state | data: new_state}}
+        {:stop, reason, new_state} ->
+          {:stop, reason, %{state | data: new_state}}
+        any -> any
+        # this lets us fail with a standard gen_server failure message.
+      end
+    else
+      {:noreply, state}
     end
   end
 
   @impl true
-  @spec terminate(reason, t) :: term
+  @spec terminate(reason, state) :: term
     when reason: :normal | :shutdown | {:shutdown, term}
   def terminate(reason, state = %{module: module}) do
     if function_exported?(module, :terminate, 2) do
@@ -109,5 +121,5 @@ defmodule Erps.Client do
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}
 
-  @optional_callbacks handle_push: 2
+  @optional_callbacks handle_push: 2, terminate: 2
 end
