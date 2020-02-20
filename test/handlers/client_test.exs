@@ -42,6 +42,14 @@ defmodule ErpsTest.ClientTest do
       Erps.Server.push(svr, {:noreply, :clear})
       assert_receive :pong
     end
+
+    test "the client can process a {:stop, reason, state}", %{server: svr} do
+      {:ok, client} = Client.start_link(svr)
+      Process.sleep(20)
+      Erps.Server.push(svr, {:stop, :normal, :ok})
+      Process.sleep(20)
+      refute Process.alive?(client)
+    end
   end
 
 end

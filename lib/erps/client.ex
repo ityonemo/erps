@@ -42,13 +42,47 @@ defmodule Erps.Client do
   def handle_info({:tcp, _socket, data}, state) do
     case :erlang.binary_to_term(data) do
       {:"$push", value} ->
-        state.module.handle_push(value, state.data)
-      {reply, from} -> GenServer.reply(from, reply)
+        push_impl(value, state)
+      {reply, from} ->
+        GenServer.reply(from, reply)
+        {:noreply, state}
     end
-    {:noreply, state}
   end
   def handle_info({:tcp_closed, socket}, state = %{socket: socket}) do
     {:stop, :tcp_closed, state}
   end
 
+  defp push_impl(value, state = %{module: module}) do
+    value
+    |> module.handle_push(state.data)
+    |> case do
+      {:noreply, new_state} ->
+        {:noreply, %{state | data: new_state}}
+      {:stop, reason, new_state} ->
+        {:stop, reason, %{state | data: new_state}}
+      any -> any
+      # this lets us fail with a standard gen_server failure message.
+    end
+  end
+
+  #############################################################################
+  ## API Definition
+
+  @doc """
+  Invoked to handle `Erps.Server.push/2` messages.
+
+  `push` is the push message sent by a push/2 and `state` is the current
+  state of the `Erps.Client`.
+
+  ### Return codes
+  - `{:noreply, new_state}` continues the loop with new state `new_state`
+  - `{:stop, reason, new_state}` terminates the loop, passing `new_state`
+    to `c:terminate/2`, if it's implemented.
+  """
+  @callback handle_push(push :: term, state :: term) ::
+    {:noreply, new_state}
+    | {:stop, reason :: term, new_state}
+  when new_state: term
+
+  @optional_callbacks handle_push: 2
 end
