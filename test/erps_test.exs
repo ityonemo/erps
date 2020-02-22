@@ -55,7 +55,7 @@ defmodule ErpsTest do
       {:ok, port} = Erps.Server.port(server)
       {:ok, client} = TestClient.start_link(port)
       TestClient.cast(client)
-      Process.sleep(10)
+      Process.sleep(20)
       assert :casted = TestServer.state(server)
     end
   end

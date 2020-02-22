@@ -6,12 +6,18 @@ defmodule ErpsTest.OtpTest do
 
     @localhost {127, 0, 0, 1}
 
-    def start(port) do
-      Erps.Client.start(__MODULE__, :ok, server: @localhost, port: port)
+    def start(test_pid, port: port) do
+      Erps.Client.start(__MODULE__, test_pid, server: @localhost, port: port)
     end
 
-    def start_link(port) do
-      Erps.Client.start_link(__MODULE__, :ok, server: @localhost, port: port)
+    def start_link(test_pid, port: port) do
+      Erps.Client.start_link(__MODULE__, test_pid, server: @localhost, port: port)
+    end
+
+    def handle_push(:die, state), do: {:stop, :die, state}
+    def handle_push(:ping, test_pid) do
+      send(test_pid, :ping)
+      {:noreply, test_pid}
     end
 
     def init(start), do: {:ok, start}
@@ -35,9 +41,9 @@ defmodule ErpsTest.OtpTest do
     test "the server is okay" do
       {:ok, server} = TestServer.start_link(:ok)
       {:ok, port} = Erps.Server.port(server)
-      {:ok, client} = TestClient.start(port)
+      {:ok, client} = TestClient.start(self(), port: port)
 
-      Process.sleep(10)
+      Process.sleep(20)
       Process.exit(client, :kill)
       Process.sleep(50)
 
@@ -49,9 +55,9 @@ defmodule ErpsTest.OtpTest do
     test "client will get killed" do
       {:ok, server} = TestServer.start(:ok)
       {:ok, port} = Erps.Server.port(server)
-      {:ok, client} = TestClient.start(port)
+      {:ok, client} = TestClient.start(self(), port: port)
 
-      Process.sleep(10)
+      Process.sleep(20)
       Process.exit(server, :kill)
       Process.sleep(50)
 
@@ -59,9 +65,19 @@ defmodule ErpsTest.OtpTest do
     end
   end
 
-  describe "if you supervise the server and client" do
-    test "the client will reconnect" do
-      flunk
-    end
-  end
+  #describe "if you supervise the server and client" do
+  #  test "the client will reconnect on external death" do
+  #    {:ok, server} = TestServer.start(:ok)
+  #    {:ok, port} = Erps.Server.port(server)
+#
+  #    children = [
+  #      {TestClient, [:ok, name: :test_client]}
+  #    ]
+  #    Supervisor.start_link(children)
+#
+  #    Process.sleep(20)
+  #    Process.exit(client, :kill)
+#
+  #  end
+  #end
 end

@@ -2,6 +2,11 @@ defmodule Erps.Server do
   defmacro __using__(_opts) do
     quote do
       @behaviour Erps.Server
+
+      # define a set of "magic functions".
+      def push(srv, push), do: Erps.Server.push(srv, push)
+      def connections(srv), do: Erps.Server.connections(srv)
+      def disconnect(srv, port), do: Erps.Server.disconnect(srv, port)
     end
   end
 

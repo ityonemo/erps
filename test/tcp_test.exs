@@ -31,7 +31,7 @@ defmodule ErpsTest.TcpTest do
     {:ok, server} = TestServer.start_link(:waiting)
     {:ok, port} = Erps.Server.port(server)
     {:ok, _client1} = TestClient.start_link(port)
-    Process.sleep(10)
+    Process.sleep(20)
     assert [_port] = Erps.Server.connections(server)
   end
 
@@ -40,7 +40,7 @@ defmodule ErpsTest.TcpTest do
     {:ok, port} = Erps.Server.port(server)
     {:ok, _client1} = TestClient.start_link(port)
     {:ok, _client2} = TestClient.start_link(port)
-    Process.sleep(10)
+    Process.sleep(20)
     assert [_port1, _port2] = Erps.Server.connections(server)
   end
 
@@ -48,10 +48,10 @@ defmodule ErpsTest.TcpTest do
     {:ok, server} = TestServer.start_link(:waiting)
     {:ok, port} = Erps.Server.port(server)
     {:ok, client} = TestClient.start(port)
-    Process.sleep(10)
+    Process.sleep(20)
     assert [sport] = Erps.Server.connections(server)
     Process.exit(client, :kill)
-    Process.sleep(10)
+    Process.sleep(20)
     refute Port.info(sport) # presume the port has gone down.
     assert [] = Erps.Server.connections(server)
   end
@@ -60,13 +60,13 @@ defmodule ErpsTest.TcpTest do
     {:ok, server} = TestServer.start_link(:waiting)
     {:ok, port} = Erps.Server.port(server)
     {:ok, _client1} = TestClient.start(port)
-    Process.sleep(10)
+    Process.sleep(20)
     assert [sport] = Erps.Server.connections(server)
     {:ok, client2} = TestClient.start(port)
-    Process.sleep(10)
+    Process.sleep(20)
     assert [_, _] = Erps.Server.connections(server)
     Process.exit(client2, :kill)
-    Process.sleep(10)
+    Process.sleep(20)
     assert [^sport] = Erps.Server.connections(server)
   end
 end

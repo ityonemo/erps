@@ -1,10 +1,12 @@
 defmodule ErpsTest.PushTest do
   use ExUnit.Case, async: true
 
+  use ErpsTest.ClientCase
+
   @moduletag :push
   # makes sure that we can handle push results
 
-  defmodule TestClient do
+  defmodule Client do
     use Erps.Client
 
     @localhost {127, 0, 0, 1}
@@ -23,24 +25,13 @@ defmodule ErpsTest.PushTest do
     end
   end
 
-  defmodule TestServer do
-    use Erps.Server
-
-    def start_link(state) do
-      Erps.Server.start_link(__MODULE__, state, [])
-    end
-
-    def init(state), do: {:ok, state}
-
-    def push(srv), do: Erps.Server.push(srv, :push)
-  end
-
   test "servers respond when sent a push signal" do
-    {:ok, srv} = TestServer.start_link(nil)
-    {:ok, port} = Erps.Server.port(srv)
-    TestClient.start_link(self(), port)
-    Process.sleep(10)
-    TestServer.push(srv)
+    {:ok, srv} = Server.start_link(nil)
+    {:ok, port} = Server.port(srv)
+
+    Client.start_link(self(), port)
+    Process.sleep(20)
+    Server.push(srv, :push)
     assert_receive :pushed
   end
 end

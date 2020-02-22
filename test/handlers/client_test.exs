@@ -1,19 +1,6 @@
 defmodule ErpsTest.ClientTest do
   use ExUnit.Case, async: true
-
-  defmodule Server do
-    use Erps.Server
-
-    def start_link(val), do: Erps.Server.start_link(__MODULE__, val, [])
-    def init(val), do: {:ok, val}
-
-  end
-
-  setup do
-    {:ok, svr} = Server.start_link(:ok)
-    {:ok, server: svr}
-  end
-
+  use ErpsTest.ClientCase
 
   defmodule Client do
 
@@ -49,15 +36,15 @@ defmodule ErpsTest.ClientTest do
     test "the client can process a {:noreply, state}", %{server: svr} do
       Client.start_link(svr)
       Process.sleep(20)
-      Erps.Server.push(svr, {:noreply, self()})
-      Erps.Server.push(svr, {:noreply, :clear})
+      Server.push(svr, {:noreply, self()})
+      Server.push(svr, {:noreply, :clear})
       assert_receive :pong
     end
 
     test "the client can process a {:stop, reason, state}", %{server: svr} do
       {:ok, client} = Client.start_link(svr)
       Process.sleep(20)
-      Erps.Server.push(svr, {:stop, :normal, :ok})
+      Server.push(svr, {:stop, :normal, :ok})
       Process.sleep(20)
       refute Process.alive?(client)
     end
@@ -67,7 +54,7 @@ defmodule ErpsTest.ClientTest do
     test "when the server pushes a stop command", %{server: svr} do
       Client.start(svr)
       Process.sleep(20)
-      Erps.Server.push(svr, {:stop, :normal, self()})
+      Server.push(svr, {:stop, :normal, self()})
       assert_receive :normal
     end
 
@@ -75,10 +62,10 @@ defmodule ErpsTest.ClientTest do
       Client.start(svr)
       Process.sleep(20)
       # instrument a pid into the client, using server push.
-      Erps.Server.push(svr, {:noreply, self()})
+      Server.push(svr, {:noreply, self()})
       Process.sleep(20)
-      [client_port] = Erps.Server.connections(svr)
-      Erps.Server.disconnect(svr, client_port)
+      [client_port] = Server.connections(svr)
+      Server.disconnect(svr, client_port)
       Process.sleep(20)
       assert_receive :tcp_closed
     end
