@@ -20,7 +20,7 @@ defmodule Erps.Server do
     GenServer.start(__MODULE__, {module, param, inner_opts}, opts)
   end
 
-  def start_link(module, param, opts) do
+  def start_link(module, param, opts \\ []) do
     inner_opts = Keyword.take(opts, [:port])
     GenServer.start_link(__MODULE__, {module, param, inner_opts}, opts)
   end
@@ -110,12 +110,19 @@ defmodule Erps.Server do
   def handle_info({:tcp_closed, port}, state) do
     {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
   end
+  def handle_info(val, state) do
+    val |> IO.inspect(label: "114")
+    {:noreply, state}
+  end
 
   defp process_call(call_result, socket, ref, state) do
     case call_result do
       {:reply, reply, data} ->
         :gen_tcp.send(socket, :erlang.term_to_binary({reply, ref}))
         {:noreply, %{state | data: data}}
+      {:reply, reply, data, timeout} ->
+        :gen_tcp.send(socket, :erlang.term_to_binary({reply, ref}))
+        {:noreply, %{state | data: data}, timeout}
     end
   end
 
