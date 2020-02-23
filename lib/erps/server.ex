@@ -85,6 +85,11 @@ defmodule Erps.Server do
   def handle_call(push = {:"$push", _}, _from, state) do
     push_impl(push, state)
   end
+  def handle_call(call, from, state = %{module: module}) do
+    call
+    |> module.handle_call(from, state.data)
+    |> process_call(from, state)
+  end
 
   @spec handle_info(any, any) :: {:noreply, any}
   def handle_info(:accept, state) do
@@ -100,7 +105,7 @@ defmodule Erps.Server do
       {:"$call", from, data} ->
         data
         |> module.handle_call(from, state.data)
-        |> process_call(socket, from, state)
+        |> process_call({:remote, socket, from}, state)
       {:"$cast", data} ->
         data
         |> module.handle_cast(state.data)
@@ -110,19 +115,34 @@ defmodule Erps.Server do
   def handle_info({:tcp_closed, port}, state) do
     {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
   end
-  def handle_info(val, state) do
-    val |> IO.inspect(label: "114")
-    {:noreply, state}
+  def handle_info(info_term, state = %{module: module}) do
+    info_term
+    |> module.handle_info(state.data)
+    |> process_info(state)
   end
 
-  defp process_call(call_result, socket, ref, state) do
+  def handle_continue(continue_term, state = %{module: module}) do
+    continue_term
+    |> module.handle_continue(state.data)
+    |> process_continue(state)
+  end
+
+  defp process_call(call_result, {:remote, socket, from}, state) do
     case call_result do
       {:reply, reply, data} ->
-        :gen_tcp.send(socket, :erlang.term_to_binary({reply, ref}))
+        :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
         {:noreply, %{state | data: data}}
-      {:reply, reply, data, timeout} ->
-        :gen_tcp.send(socket, :erlang.term_to_binary({reply, ref}))
-        {:noreply, %{state | data: data}, timeout}
+      {:reply, reply, data, timeout_or_continue} ->
+        :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
+        {:noreply, %{state | data: data}, timeout_or_continue}
+    end
+  end
+  defp process_call(call_result, _from, state) do
+    case call_result do
+      {:reply, reply, data} ->
+        {:reply, reply, %{state | data: data}}
+      {:reply, reply, data, timeout_or_continue} ->
+        {:reply, reply, %{state | data: data}, timeout_or_continue}
     end
   end
 
@@ -132,4 +152,32 @@ defmodule Erps.Server do
         {:noreply, %{state | data: data}}
     end
   end
+
+  defp process_info(call_result, state) do
+    case call_result do
+      {:noreply, data} ->
+        {:noreply, %{state | data: data}}
+    end
+  end
+
+  defp process_continue(continue_result, state) do
+    case continue_result do
+      {:noreply, data} ->
+        {:noreply, %{state | data: data}}
+    end
+  end
+
+  #############################################################################
+  ## BEHAVIOUR CALLBACKS
+
+  @type from :: GenServer.from | {:remote, :inet.socket, GenServer.from}
+
+  @callback handle_call(request :: term, from, state :: term) ::
+    {:reply, reply, new_state}
+    | {:reply, reply, new_state, timeout | :hibernate | {:continue, term}}
+    | {:noreply, new_state}
+    | {:noreply, new_state, timeout | :hibernate | {:continue, term}}
+    | {:stop, reason, reply, new_state}
+    | {:stop, reason, new_state}
+    when reply: term, new_state: term, reason: term
 end

@@ -22,8 +22,9 @@ defmodule ErpsTest.Handlers.ServerTest do
       receive do any -> any end
     end
 
-    def handle_info(val, test_pid) do
-      send(test_pid, val)
+    def handle_continue(value, test_pid) do
+      send(test_pid, value)
+      {:noreply, test_pid}
     end
   end
 
@@ -41,10 +42,18 @@ defmodule ErpsTest.Handlers.ServerTest do
       assert :foo == Task.await(async)
     end
 
+    @tag :one
     test "an arbitrary process can also be returned the call ", %{client: client, server: server} do
-      async = Task.async(fn -> GenServer.call(client, :foo) end)
+      async = Task.async(fn -> GenServer.call(server, :foo) end)
       receive do :called -> send(server, {:reply, :foo, self()}) end
       assert :foo == Task.await(async)
+    end
+
+    test "the server can be sent into a continuation", %{client: client, server: server} do
+      async = Task.async(fn -> Client.call(client, :foo) end)
+      receive do :called -> send(server, {:reply, :foo, self(), {:continue, :continued}}) end
+      assert :foo == Task.await(async)
+      assert_receive :continued
     end
   end
 
