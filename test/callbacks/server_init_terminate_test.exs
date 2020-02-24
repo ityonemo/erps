@@ -97,6 +97,4 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
       assert_receive :normal
     end
   end
-
-
 end

@@ -32,9 +32,11 @@ defmodule Erps.Client do
   def init({module, start, opts}) do
     port = opts[:port]
     server = opts[:server]
-    with {:ok, socket} <- :gen_tcp.connect(server, port, [:binary, active: true]),
-         {:ok, init_state} <- module.init(start) do
-      {:ok, struct(__MODULE__, [module: module, socket: socket, data: init_state] ++ opts)}
+    case :gen_tcp.connect(server, port, [:binary, active: true]) do
+      {:ok, socket} ->
+        start
+        |> module.init()
+        |> process_init([module: module, socket: socket] ++ opts)
     end
   end
 
@@ -94,8 +96,43 @@ defmodule Erps.Client do
     end
   end
 
+  @impl true
+  def handle_continue(continuation, state = %{module: module}) do
+    continuation
+    |> module.handle_continue(state.data)
+    |> process_continue(state)
+  end
+
+  #############################################################################
+  ## Adapters
+
+  defp process_init(init_resp, parameters) do
+    case init_resp do
+      {:ok, data} ->
+        {:ok, struct(__MODULE__, [data: data] ++ parameters)}
+      {:ok, data, timeout_or_continue} ->
+        {:ok, struct(__MODULE__, [data: data] ++ parameters), timeout_or_continue}
+      any -> any
+    end
+  end
+
+  defp process_continue(continue_resp, state) do
+    case continue_resp do
+      {:noreply, data} ->
+        {:noreply, %{state | data: data}}
+    end
+  end
+
   #############################################################################
   ## API Definition
+
+
+  @callback init(init_arg :: term()) ::
+    {:ok, state}
+    | {:ok, state, timeout() | :hibernate | {:continue, term()}}
+    | :ignore
+    | {:stop, reason :: any()}
+    when state: term
 
   @doc """
   Invoked to handle `Erps.Server.push/2` messages.

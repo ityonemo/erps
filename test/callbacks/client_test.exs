@@ -18,6 +18,8 @@ defmodule ErpsTest.Callbacks.ClientTest do
       Erps.Client.start_link(__MODULE__,
         :ok, server: @localhost, port: port)
     end
+
+    @impl true
     def init(val), do: {:ok, val}
 
     @impl true
