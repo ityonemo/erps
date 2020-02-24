@@ -239,6 +239,7 @@ defmodule ErpsTest.Handlers.ServerTest do
       assert :ping == Task.await(ping_task)
     end
 
+    @tag :one
     test "a local client can send a info with a continuation", %{server: server} do
       ping_task = Task.async(fn -> receive do any -> any end end)
       send(server, :foo)

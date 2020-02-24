@@ -136,29 +136,17 @@ defmodule Erps.Server do
     |> process_noreply(state)
   end
 
-  defp process_call(call_result, {:remote, socket, from}, state) do
+  defp process_call(call_result, from, state) do
     case call_result do
       {:reply, reply, data} ->
-        :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
+        reply(from, reply)
         {:noreply, %{state | data: data}}
       {:reply, reply, data, timeout_or_continue} ->
-        :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
+        reply(from, reply)
         {:noreply, %{state | data: data}, timeout_or_continue}
       {:stop, reason, reply, data} ->
-        :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
+        reply(from, reply)
         {:stop, reason, %{state | data: data}}
-      any ->
-        process_noreply(any, state)
-    end
-  end
-  defp process_call(call_result, _from, state) do
-    case call_result do
-      {:reply, reply, data} ->
-        {:reply, reply, %{state | data: data}}
-      {:reply, reply, data, timeout_or_continue} ->
-        {:reply, reply, %{state | data: data}, timeout_or_continue}
-      {:stop, reason, reply, data} ->
-        {:stop, reason, reply, %{state | data: data}}
       any ->
         process_noreply(any, state)
     end
