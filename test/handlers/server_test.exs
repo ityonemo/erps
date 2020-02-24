@@ -65,79 +65,95 @@ defmodule ErpsTest.Handlers.ServerTest do
 
   describe "when instrumented with a call response" do
     test "a remote client receives a call result", %{client: client, server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> Client.call(client, :foo) end)
-      receive do {:called, _, :foo} -> send(server, {:reply, :foo, self()}) end
+      receive do {:called, _, :foo} -> send(server, {:reply, :foo, ping_task.pid}) end
       assert :foo == Task.await(async)
+      GenServer.call(server, :ping)
+      assert :ping == Task.await(ping_task)
     end
 
     test "a local client can also be returned the call result", %{server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> GenServer.call(server, :foo) end)
-      receive do {:called, _, :foo} -> send(server, {:reply, :foo, self()}) end
+      receive do {:called, _, :foo} -> send(server, {:reply, :foo, ping_task.pid}) end
       assert :foo == Task.await(async)
+      GenServer.call(server, :ping)
+      assert :ping == Task.await(ping_task)
     end
 
     test "a remote client can send the server into a continuation", %{client: client, server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> Client.call(client, :foo) end)
-      receive do {:called, _, :foo} -> send(server, {:reply, :foo, self(), {:continue, :continued}}) end
+      receive do {:called, _, :foo} -> send(server, {:reply, :foo, ping_task.pid, {:continue, :continued}}) end
       assert :foo == Task.await(async)
-      assert_receive :continued
+      assert :continued == Task.await(ping_task)
     end
 
     test "a local client can send the server into a continuation", %{server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> GenServer.call(server, :foo) end)
-      receive do {:called, _, :foo} -> send(server, {:reply, :foo, self(), {:continue, :continued}}) end
+      receive do {:called, _, :foo} -> send(server, {:reply, :foo, ping_task.pid, {:continue, :continued}}) end
       assert :foo == Task.await(async)
-      assert_receive :continued
+      assert :continued == Task.await(ping_task)
     end
 
     test "a remote client can send the server into a noreply", %{client: client, server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> Client.call(client, :foo) end)
       callback_from = receive do
         {:called, from, :foo} ->
-          send(server, {:noreply, self()})
+          send(server, {:noreply, ping_task.pid})
           from
       end
       # force a reply back.
       Server.reply(server, callback_from, :foo)
       assert :foo == Task.await(async)
+      GenServer.call(server, :ping)
+      assert :ping == Task.await(ping_task)
     end
 
     test "a local client can send the server into a noreply", %{server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> GenServer.call(server, :foo) end)
       callback_from = receive do
         {:called, from, :foo} ->
-          send(server, {:noreply, self()})
+          send(server, {:noreply, ping_task.pid})
           from
       end
       # force a reply back.
       Server.reply(server, callback_from, :foo)
       assert :foo == Task.await(async)
+      GenServer.call(server, :ping)
+      assert :ping == Task.await(ping_task)
     end
 
     test "a remote client can send the server into a noreply with a continuation", %{client: client, server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> Client.call(client, :foo) end)
       callback_from = receive do
         {:called, from, :foo} ->
-          send(server, {:noreply, self(), {:continue, :continued}})
+          send(server, {:noreply, ping_task.pid, {:continue, :continued}})
           from
       end
       # force a reply back.
       Server.reply(server, callback_from, :foo)
       assert :foo == Task.await(async)
-      assert_receive :continued
+      assert :continued = Task.await(ping_task)
     end
 
     test "a local client can send the server into a noreply with a continuation", %{server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
       async = Task.async(fn -> GenServer.call(server, :foo) end)
       callback_from = receive do
         {:called, from, :foo} ->
-          send(server, {:noreply, self(), {:continue, :continued}})
+          send(server, {:noreply, ping_task.pid, {:continue, :continued}})
           from
       end
       # force a reply back.
       Server.reply(server, callback_from, :foo)
-      assert :foo == Task.await(async)
-      assert_receive :continued
+      assert :foo = Task.await(async)
+      assert :continued = Task.await(ping_task)
     end
 
     test "a remote client can stop the server with reply", %{client: client, server: server} do
@@ -239,7 +255,6 @@ defmodule ErpsTest.Handlers.ServerTest do
       assert :ping == Task.await(ping_task)
     end
 
-    @tag :one
     test "a local client can send a info with a continuation", %{server: server} do
       ping_task = Task.async(fn -> receive do any -> any end end)
       send(server, :foo)
@@ -249,7 +264,6 @@ defmodule ErpsTest.Handlers.ServerTest do
     end
 
     test "a local client can send a stop", %{server: server} do
-      ping_task = Task.async(fn -> receive do any -> any end end)
       send(server, :foo)
       receive do {:sent, :foo} -> send(server, {:stop, :normal, self()}) end
       Process.sleep(20)
