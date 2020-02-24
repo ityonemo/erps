@@ -136,6 +136,12 @@ defmodule Erps.Server do
     |> process_noreply(state)
   end
 
+  #############################################################################
+  ## ADAPTERS
+  ##
+  ## these functions do the hard work of connecting output responses by the
+  ## target module to be compatible with the responses by gen_servers.
+
   defp process_call(call_result, from, state) do
     case call_result do
       {:reply, reply, data} ->
