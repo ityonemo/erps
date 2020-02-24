@@ -25,6 +25,7 @@ defmodule Erps.Server do
     GenServer.start_link(__MODULE__, {module, param, inner_opts}, opts)
   end
 
+  @impl true
   def init({module, param, inner_opts}) do
     port = inner_opts[:port] || 0
     with {:ok, socket} <- :gen_tcp.listen(port, [:binary, active: true]),
@@ -95,10 +96,10 @@ defmodule Erps.Server do
   def handle_cast(cast, state = %{module: module}) do
     cast
     |> module.handle_cast(state.data)
-    |> process_cast(state)
+    |> process_noreply(state)
   end
 
-  @spec handle_info(any, any) :: {:noreply, any}
+  @impl true
   def handle_info(:accept, state) do
     new_state = case :gen_tcp.accept(state.socket, 100) do
       {:ok, socket} -> %{state | connections: [socket | state.connections]}
@@ -116,7 +117,7 @@ defmodule Erps.Server do
       {:"$cast", data} ->
         data
         |> module.handle_cast(state.data)
-        |> process_cast(state)
+        |> process_noreply(state)
     end
   end
   def handle_info({:tcp_closed, port}, state) do
@@ -125,13 +126,14 @@ defmodule Erps.Server do
   def handle_info(info_term, state = %{module: module}) do
     info_term
     |> module.handle_info(state.data)
-    |> process_info(state)
+    |> process_noreply(state)
   end
 
+  @impl true
   def handle_continue(continue_term, state = %{module: module}) do
     continue_term
     |> module.handle_continue(state.data)
-    |> process_continue(state)
+    |> process_noreply(state)
   end
 
   defp process_call(call_result, {:remote, socket, from}, state) do
@@ -170,24 +172,14 @@ defmodule Erps.Server do
     end
   end
 
-  defp process_cast(call_result, state) do
+  defp process_noreply(call_result, state) do
     case call_result do
       {:noreply, data} ->
         {:noreply, %{state | data: data}}
-    end
-  end
-
-  defp process_info(call_result, state) do
-    case call_result do
-      {:noreply, data} ->
-        {:noreply, %{state | data: data}}
-    end
-  end
-
-  defp process_continue(continue_result, state) do
-    case continue_result do
-      {:noreply, data} ->
-        {:noreply, %{state | data: data}}
+      {:noreply, data, timeout_or_continue} ->
+        {:noreply, %{state | data: data}, timeout_or_continue}
+      {:stop, reason, data} ->
+        {:stop, reason, %{state | data: data}}
     end
   end
 
@@ -205,5 +197,17 @@ defmodule Erps.Server do
     | {:stop, reason, new_state}
     when reply: term, new_state: term, reason: term
 
-  @optional_callbacks handle_call: 3
+  @callback handle_cast(request :: term(), state :: term()) ::
+    {:noreply, new_state}
+    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
+    | {:stop, reason :: term(), new_state}
+    when new_state: term()
+
+  @callback handle_info(msg :: :timeout | term(), state :: term()) ::
+    {:noreply, new_state}
+    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
+    | {:stop, reason :: term(), new_state}
+    when new_state: term()
+
+  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2
 end
