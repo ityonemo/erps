@@ -74,14 +74,7 @@ defmodule Erps.Client do
     if function_exported?(module, :handle_push, 2) do
       push
       |> module.handle_push(state.data)
-      |> case do
-        {:noreply, new_state} ->
-          {:noreply, %{state | data: new_state}}
-        {:stop, reason, new_state} ->
-          {:stop, reason, %{state | data: new_state}}
-        any -> any
-        # this lets us fail with a standard gen_server failure message.
-      end
+      |> process_noreply(state)
     else
       {:noreply, state}
     end
@@ -100,7 +93,7 @@ defmodule Erps.Client do
   def handle_continue(continuation, state = %{module: module}) do
     continuation
     |> module.handle_continue(state.data)
-    |> process_continue(state)
+    |> process_noreply(state)
   end
 
   #############################################################################
@@ -116,16 +109,20 @@ defmodule Erps.Client do
     end
   end
 
-  defp process_continue(continue_resp, state) do
-    case continue_resp do
+  defp process_noreply(noreply_resp, state) do
+    case noreply_resp do
       {:noreply, data} ->
         {:noreply, %{state | data: data}}
+      {:noreply, data, timeout_or_continue} ->
+        {:noreply, %{state | data: data}, timeout_or_continue}
+      {:stop, reason, new_state} ->
+        {:stop, reason, %{state | data: new_state}}
+      any -> any
     end
   end
 
   #############################################################################
   ## API Definition
-
 
   @callback init(init_arg :: term()) ::
     {:ok, state}
@@ -149,6 +146,18 @@ defmodule Erps.Client do
     {:noreply, new_state}
     | {:stop, reason :: term, new_state}
   when new_state: term
+
+  @callback handle_info(msg :: :timeout | term(), state :: term()) ::
+    {:noreply, new_state}
+    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
+    | {:stop, reason :: term(), new_state}
+    when new_state: term()
+
+  @callback  handle_continue(continue :: term(), state :: term()) ::
+    {:noreply, new_state}
+    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
+    | {:stop, reason :: term(), new_state}
+    when new_state: term()
 
   @doc """
   Invoked when the client is about to exit, usually due to `handle_push/2`

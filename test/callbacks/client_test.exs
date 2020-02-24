@@ -29,6 +29,12 @@ defmodule ErpsTest.Callbacks.ClientTest do
     end
 
     @impl true
+    def handle_continue(continue, state) do
+      if is_pid(state), do: send(state, continue)
+      {:noreply, state}
+    end
+
+    @impl true
     def terminate(reason, state) do
       if is_pid(state), do: send(state, reason)
     end
@@ -44,14 +50,29 @@ defmodule ErpsTest.Callbacks.ClientTest do
       assert_receive :pong
     end
 
+    test "the client can process a noreply with continuation", %{server: svr} do
+      Client.start_link(svr)
+      Process.sleep(20)
+      Server.push(svr, {:noreply, self(), {:continue, :continued}})
+      Process.sleep(20)
+      Server.push(svr, {:noreply, :clear})
+      assert_receive :pong
+      assert_receive :continued
+    end
+
     test "the client can process a {:stop, reason, state}", %{server: svr} do
       {:ok, client} = Client.start_link(svr)
       Process.sleep(20)
-      Server.push(svr, {:stop, :normal, :ok})
+      Server.push(svr, {:stop, :normal, self()})
       Process.sleep(20)
       refute Process.alive?(client)
+      assert_receive :normal
     end
   end
+
+  # continuations
+
+  # handle_info
 
   describe "the terminate/2 callback is called" do
     test "when the server pushes a stop command", %{server: svr} do
