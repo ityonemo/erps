@@ -37,6 +37,7 @@ defmodule ErpsTest.Callbacks.ClientTest do
       Client.start_link(svr)
       Process.sleep(20)
       Server.push(svr, {:noreply, self()})
+      Process.sleep(20)
       Server.push(svr, {:noreply, :clear})
       assert_receive :pong
     end

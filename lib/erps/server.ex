@@ -139,6 +139,13 @@ defmodule Erps.Server do
     |> process_noreply(state)
   end
 
+  @impl true
+  def terminate(reason, state = %{module: module}) do
+    if function_exported?(module, :terminate, 2) do
+      module.terminate(reason, state.data)
+    end
+  end
+
   #############################################################################
   ## ADAPTERS
   ##
@@ -151,6 +158,8 @@ defmodule Erps.Server do
         {:ok, struct(__MODULE__, [data: data] ++ init_params)}
       {:ok, data, timeout_or_continue} ->
         {:ok, struct(__MODULE__, [data: data] ++ init_params), timeout_or_continue}
+      any ->
+        any
     end
   end
 
@@ -186,6 +195,13 @@ defmodule Erps.Server do
 
   @type from :: GenServer.from | {:remote, :inet.socket, GenServer.from}
 
+  @callback init(init_arg :: term()) ::
+    {:ok, state}
+    | {:ok, state, timeout() | :hibernate | {:continue, term()}}
+    | :ignore
+    | {:stop, reason :: any()}
+    when state: term
+
   @callback handle_call(request :: term, from, state :: term) ::
     {:reply, reply, new_state}
     | {:reply, reply, new_state, timeout | :hibernate | {:continue, term}}
@@ -213,5 +229,5 @@ defmodule Erps.Server do
     | {:stop, reason :: term(), new_state}
     when new_state: term()
 
-  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2
+  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2
 end

@@ -37,19 +37,19 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     def handle_call(val, from, test_pid) do
       # wait for an instumented response.
       send(test_pid, {:called, from, val})
-      receive do any -> any end
+      receive do any when any != :accept -> any end
     end
     @impl true
     def handle_cast(val, test_pid) do
       # wait for an instumented response.
       send(test_pid, {:casted, val})
-      receive do any -> any end
+      receive do any when any != :accept -> any end
     end
     @impl true
     def handle_info(val, test_pid) do
       # wait for an instrumented response
       send(test_pid, {:sent, val})
-      receive do any -> any end
+      receive do any when any != :accept -> any end
     end
 
     @impl true
@@ -115,6 +115,7 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
       async = Task.async(fn -> GenServer.call(server, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
       assert :foo == Task.await(async)
+      Process.sleep(20)
       refute Process.alive?(server)
     end
 

@@ -64,20 +64,4 @@ defmodule ErpsTest.OtpTest do
       refute Process.alive?(client)
     end
   end
-
-  #describe "if you supervise the server and client" do
-  #  test "the client will reconnect on external death" do
-  #    {:ok, server} = TestServer.start(:ok)
-  #    {:ok, port} = Erps.Server.port(server)
-#
-  #    children = [
-  #      {TestClient, [:ok, name: :test_client]}
-  #    ]
-  #    Supervisor.start_link(children)
-#
-  #    Process.sleep(20)
-  #    Process.exit(client, :kill)
-#
-  #  end
-  #end
 end
