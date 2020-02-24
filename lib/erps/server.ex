@@ -189,5 +189,11 @@ defmodule Erps.Server do
     | {:stop, reason :: term(), new_state}
     when new_state: term()
 
+  @callback  handle_continue(continue :: term(), state :: term()) ::
+    {:noreply, new_state}
+    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
+    | {:stop, reason :: term(), new_state}
+    when new_state: term()
+
   @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2
 end

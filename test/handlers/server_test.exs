@@ -50,6 +50,7 @@ defmodule ErpsTest.Handlers.ServerTest do
       receive do any -> any end
     end
 
+    @impl true
     def handle_continue(value, test_pid) do
       send(test_pid, value)
       {:noreply, test_pid}
