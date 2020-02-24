@@ -66,9 +66,14 @@ defmodule Erps.Server do
   end
 
   #############################################################################
-  ##
+  ## GenServer wrappers
 
-  def call(srv, content, timeout \\ 5000), do: GenServer.call(srv, {:"$srv", content}, timeout)
+  def call(srv, content, timeout \\ 5000), do: GenServer.call(srv, content, timeout)
+
+  def reply({:remote, socket, from}, reply) do
+    :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
+  end
+  def reply(local_client, reply), do: GenServer.reply(local_client, reply)
 
   #############################################################################
   # router
@@ -76,12 +81,6 @@ defmodule Erps.Server do
   def handle_call(:"$port", _from, state), do: port_impl(state)
   def handle_call(:"$connections", _from, state), do: connections_impl(state)
   def handle_call({:"$disconnect", port}, _from, state), do: disconnect_impl(port, state)
-  def handle_call({:"$srv", content}, from, state = %{module: module}) do
-    case module.handle_call(content, from, state.data) do
-      {:reply, reply, data} ->
-        {:reply, reply, %{state | data: data}}
-    end
-  end
   def handle_call(push = {:"$push", _}, _from, state) do
     push_impl(push, state)
   end
@@ -135,6 +134,8 @@ defmodule Erps.Server do
       {:reply, reply, data, timeout_or_continue} ->
         :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
         {:noreply, %{state | data: data}, timeout_or_continue}
+      {:noreply, data} ->
+        {:noreply, %{state | data: data}}
     end
   end
   defp process_call(call_result, _from, state) do
@@ -143,6 +144,8 @@ defmodule Erps.Server do
         {:reply, reply, %{state | data: data}}
       {:reply, reply, data, timeout_or_continue} ->
         {:reply, reply, %{state | data: data}, timeout_or_continue}
+      {:noreply, data} ->
+        {:noreply, %{state | data: data}}
     end
   end
 
@@ -180,4 +183,6 @@ defmodule Erps.Server do
     | {:stop, reason, reply, new_state}
     | {:stop, reason, new_state}
     when reply: term, new_state: term, reason: term
+
+  @optional_callbacks handle_call: 3
 end

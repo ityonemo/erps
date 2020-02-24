@@ -36,7 +36,7 @@ defmodule ErpsTest do
       {:reply, state, state}
     end
 
-    def handle_cast(:cast, state) do
+    def handle_cast(:cast, _state) do
       {:noreply, :casted}
     end
   end

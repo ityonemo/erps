@@ -1,6 +1,5 @@
 defmodule ErpsTest.PushTest do
   use ExUnit.Case, async: true
-
   use ErpsTest.ClientCase
 
   @moduletag :push
