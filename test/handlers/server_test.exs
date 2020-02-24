@@ -239,6 +239,20 @@ defmodule ErpsTest.Handlers.ServerTest do
       assert :ping == Task.await(ping_task)
     end
 
-    @tag :one
+    test "a local client can send a info with a continuation", %{server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
+      send(server, :foo)
+      receive do {:sent, :foo} -> send(server, {:noreply, ping_task.pid, {:continue, :continued}}) end
+      GenServer.call(server, :ping)
+      assert :continued == Task.await(ping_task)
+    end
+
+    test "a local client can send a stop", %{server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
+      send(server, :foo)
+      receive do {:sent, :foo} -> send(server, {:stop, :normal, self()}) end
+      Process.sleep(20)
+      refute Process.alive?(server)
+    end
   end
 end
