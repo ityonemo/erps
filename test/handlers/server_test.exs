@@ -44,34 +44,33 @@ defmodule ErpsTest.Handlers.ServerTest do
   end
 
   describe "when instrumented with a call response" do
-    test "the client receives a call ", %{client: client, server: server} do
+    test "a remote client receives a call result", %{client: client, server: server} do
       async = Task.async(fn -> Client.call(client, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:reply, :foo, self()}) end
       assert :foo == Task.await(async)
     end
 
-    test "an arbitrary process can also be returned the call ", %{server: server} do
+    test "a local client can also be returned the call result", %{server: server} do
       async = Task.async(fn -> GenServer.call(server, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:reply, :foo, self()}) end
       assert :foo == Task.await(async)
     end
 
-    test "the client can send the server into a continuation", %{client: client, server: server} do
+    test "a remote client can send the server into a continuation", %{client: client, server: server} do
       async = Task.async(fn -> Client.call(client, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:reply, :foo, self(), {:continue, :continued}}) end
       assert :foo == Task.await(async)
       assert_receive :continued
     end
 
-    test "an arbitrary process can send the server into a continuation", %{server: server} do
+    test "a local client can send the server into a continuation", %{server: server} do
       async = Task.async(fn -> GenServer.call(server, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:reply, :foo, self(), {:continue, :continued}}) end
       assert :foo == Task.await(async)
       assert_receive :continued
     end
 
-    @tag :one
-    test "the client can send the server into a noreply", %{client: client, server: server} do
+    test "a remote client can send the server into a noreply", %{client: client, server: server} do
       async = Task.async(fn -> Client.call(client, :foo) end)
       callback_from = receive do
         {:called, from, :foo} ->
@@ -82,6 +81,56 @@ defmodule ErpsTest.Handlers.ServerTest do
       Server.reply(server, callback_from, :foo)
       assert :foo == Task.await(async)
     end
-  end
 
+    test "a local client can send the server into a noreply", %{server: server} do
+      async = Task.async(fn -> GenServer.call(server, :foo) end)
+      callback_from = receive do
+        {:called, from, :foo} ->
+          send(server, {:noreply, self()})
+          from
+      end
+      # force a reply back.
+      Server.reply(server, callback_from, :foo)
+      assert :foo == Task.await(async)
+    end
+
+    test "a remote client can send the server into a noreply with a continuation", %{client: client, server: server} do
+      async = Task.async(fn -> Client.call(client, :foo) end)
+      callback_from = receive do
+        {:called, from, :foo} ->
+          send(server, {:noreply, self(), {:continue, :continued}})
+          from
+      end
+      # force a reply back.
+      Server.reply(server, callback_from, :foo)
+      assert :foo == Task.await(async)
+      assert_receive :continued
+    end
+
+    test "a local client can send the server into a noreply with a continuation", %{server: server} do
+      async = Task.async(fn -> GenServer.call(server, :foo) end)
+      callback_from = receive do
+        {:called, from, :foo} ->
+          send(server, {:noreply, self(), {:continue, :continued}})
+          from
+      end
+      # force a reply back.
+      Server.reply(server, callback_from, :foo)
+      assert :foo == Task.await(async)
+      assert_receive :continued
+    end
+
+    test "a remote client can stop the server with reply", %{client: client, server: server} do
+      async = Task.async(fn -> Client.call(client, :foo) end)
+      receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
+      assert :foo == Task.await(async)
+    end
+
+    @tag :one
+    test "a local client can stop the server with reply", %{server: server} do
+      async = Task.async(fn -> GenServer.call(server, :foo) end)
+      receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
+      assert :foo == Task.await(async)
+    end
+  end
 end

@@ -136,6 +136,11 @@ defmodule Erps.Server do
         {:noreply, %{state | data: data}, timeout_or_continue}
       {:noreply, data} ->
         {:noreply, %{state | data: data}}
+      {:noreply, data, timeout_or_continue} ->
+        {:noreply, %{state | data: data}, timeout_or_continue}
+      {:stop, reason, reply, data} ->
+        :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
+        {:stop, reason, %{state | data: data}}
     end
   end
   defp process_call(call_result, _from, state) do
@@ -146,6 +151,10 @@ defmodule Erps.Server do
         {:reply, reply, %{state | data: data}, timeout_or_continue}
       {:noreply, data} ->
         {:noreply, %{state | data: data}}
+      {:noreply, data, timeout_or_continue} ->
+        {:noreply, %{state | data: data}, timeout_or_continue}
+      {:stop, reason, reply, data} ->
+        {:stop, reason, reply, %{state | data: data}}
     end
   end
 
