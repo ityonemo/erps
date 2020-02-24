@@ -15,7 +15,7 @@ defmodule Erps.Server do
 
   @behaviour GenServer
 
-  def start(module, param, opts) do
+  def start(module, param, opts \\ []) do
     inner_opts = Keyword.take(opts, [:port])
     GenServer.start(__MODULE__, {module, param, inner_opts}, opts)
   end
@@ -141,6 +141,8 @@ defmodule Erps.Server do
       {:stop, reason, reply, data} ->
         :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
         {:stop, reason, %{state | data: data}}
+      {:stop, reason, data} ->
+        {:stop, reason, %{state | data: data}}
     end
   end
   defp process_call(call_result, _from, state) do
@@ -155,6 +157,8 @@ defmodule Erps.Server do
         {:noreply, %{state | data: data}, timeout_or_continue}
       {:stop, reason, reply, data} ->
         {:stop, reason, reply, %{state | data: data}}
+      {:stop, reason, data} ->
+        {:stop, reason, %{state | data: data}}
     end
   end
 

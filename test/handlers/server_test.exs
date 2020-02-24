@@ -8,8 +8,8 @@ defmodule ErpsTest.Handlers.ServerTest do
   defmodule Server do
     use Erps.Server
 
-    def start_link(test_pid) do
-      Erps.Server.start_link(__MODULE__, test_pid)
+    def start(test_pid) do
+      Erps.Server.start(__MODULE__, test_pid)
     end
     def init(val), do: {:ok, val}
 
@@ -37,9 +37,9 @@ defmodule ErpsTest.Handlers.ServerTest do
   end
 
   setup do
-    {:ok, server} = Server.start_link(self())
+    {:ok, server} = Server.start(self())
     {:ok, port} = Server.port(server)
-    {:ok, client} = Client.start_link(self(), port)
+    {:ok, client} = Client.start(self(), port)
     {:ok, client: client, server: server}
   end
 
@@ -124,13 +124,41 @@ defmodule ErpsTest.Handlers.ServerTest do
       async = Task.async(fn -> Client.call(client, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
       assert :foo == Task.await(async)
+      refute Process.alive?(server)
     end
 
-    @tag :one
     test "a local client can stop the server with reply", %{server: server} do
       async = Task.async(fn -> GenServer.call(server, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
       assert :foo == Task.await(async)
+      refute Process.alive?(server)
+    end
+
+    test "a remote client can stop the server without reply", %{client: client, server: server} do
+      async = Task.async(fn ->
+        try do
+          Client.call(client, :foo)
+        catch
+          :exit, _value -> :died
+        end
+      end)
+      receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end
+      assert :died == Task.await(async)
+      refute Process.alive?(server)
+      refute Process.alive?(client)
+    end
+
+    test "a local client can stop the server without reply", %{server: server} do
+      async = Task.async(fn ->
+        try do
+          GenServer.call(server, :foo)
+        catch
+          :exit, value -> :died
+        end
+      end)
+      receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end
+      assert :died == Task.await(async)
+      refute Process.alive?(server)
     end
   end
 end
