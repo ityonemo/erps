@@ -20,13 +20,25 @@ defmodule ErpsTest.Handlers.ServerTest do
       GenServer.call(srv, {:reply, to_whom, what})
     end
 
+    # Utilities
     def handle_call({:reply, to_whom, what}, _from, test_pid) do
       Erps.Server.reply(to_whom, what)
       {:reply, :ok, test_pid}
     end
+    def handle_call(:ping, _, test_pid) do
+      send(test_pid, :ping)
+      {:reply, :ok, test_pid}
+    end
+
+    # instrumentable responses
     def handle_call(val, from, test_pid) do
       # wait for a instumented response.
       send(test_pid, {:called, from, val})
+      receive do any -> any end
+    end
+    def handle_cast(val, test_pid) do
+      # wait for a instumented response.
+      send(test_pid, {:casted, val})
       receive do any -> any end
     end
 
@@ -161,4 +173,23 @@ defmodule ErpsTest.Handlers.ServerTest do
       refute Process.alive?(server)
     end
   end
+
+  describe "when instrumented with a cast response" do
+    test "a remote client can send a cast", %{client: client, server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
+      assert :ok = Client.cast(client, :foo)
+      receive do {:casted, :foo} -> send(server, {:noreply, ping_task.pid}) end
+      GenServer.call(server, :ping)
+      assert :ping == Task.await(ping_task)
+    end
+
+    test "a local client can send a cast", %{server: server} do
+      ping_task = Task.async(fn -> receive do any -> any end end)
+      assert :ok = GenServer.cast(server, :foo)
+      receive do {:casted, :foo} -> send(server, {:noreply, ping_task.pid}) end
+      GenServer.call(server, :ping)
+      assert :ping == Task.await(ping_task)
+    end
+  end
+
 end

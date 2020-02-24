@@ -78,6 +78,7 @@ defmodule Erps.Server do
   #############################################################################
   # router
 
+  @impl true
   def handle_call(:"$port", _from, state), do: port_impl(state)
   def handle_call(:"$connections", _from, state), do: connections_impl(state)
   def handle_call({:"$disconnect", port}, _from, state), do: disconnect_impl(port, state)
@@ -88,6 +89,13 @@ defmodule Erps.Server do
     call
     |> module.handle_call(from, state.data)
     |> process_call(from, state)
+  end
+
+  @impl true
+  def handle_cast(cast, state = %{module: module}) do
+    cast
+    |> module.handle_cast(state.data)
+    |> process_cast(state)
   end
 
   @spec handle_info(any, any) :: {:noreply, any}

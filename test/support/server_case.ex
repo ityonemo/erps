@@ -28,6 +28,7 @@ defmodule ErpsTest.ServerCase do
         end
 
         def call(srv, call), do: Erps.Client.call(srv, call)
+        def cast(srv, cast), do: Erps.Client.cast(srv, cast)
       end
     end
   end
