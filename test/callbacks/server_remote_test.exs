@@ -1,4 +1,4 @@
-defmodule ErpsTest.Handlers.ServerRemoteTest do
+defmodule ErpsTest.Callbacks.ServerRemoteTest do
   use ExUnit.Case, async: true
   use ErpsTest.ServerCase
 

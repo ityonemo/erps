@@ -28,10 +28,13 @@ defmodule Erps.Server do
   @impl true
   def init({module, param, inner_opts}) do
     port = inner_opts[:port] || 0
-    with {:ok, socket} <- :gen_tcp.listen(port, [:binary, active: true]),
-         {:ok, init_state} <- module.init(param) do
-      Process.send_after(self(), :accept, 0)
-      {:ok, %__MODULE__{module: module, data: init_state, port: port, socket: socket}}
+    case :gen_tcp.listen(port, [:binary, active: true]) do
+      {:ok, socket} ->
+        # kick off the accept loop.
+        Process.send_after(self(), :accept, 0)
+        param
+        |> module.init
+        |> process_init(module: module, port: port, socket: socket)
     end
   end
 
@@ -141,6 +144,15 @@ defmodule Erps.Server do
   ##
   ## these functions do the hard work of connecting output responses by the
   ## target module to be compatible with the responses by gen_servers.
+
+  defp process_init(init_result, init_params) do
+    case init_result do
+      {:ok, data} ->
+        {:ok, struct(__MODULE__, [data: data] ++ init_params)}
+      {:ok, data, timeout_or_continue} ->
+        {:ok, struct(__MODULE__, [data: data] ++ init_params), timeout_or_continue}
+    end
+  end
 
   defp process_call(call_result, from, state) do
     case call_result do

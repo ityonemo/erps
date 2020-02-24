@@ -1,4 +1,4 @@
-defmodule ErpsTest.Handlers.ClientTest do
+defmodule ErpsTest.Callbacks.ClientTest do
   use ExUnit.Case, async: true
   use ErpsTest.ClientCase
 

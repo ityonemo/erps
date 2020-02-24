@@ -1,7 +1,6 @@
-defmodule ErpsTest.Handlers.ServerLocalTest do
+defmodule ErpsTest.Callbacks.ServerLocalTest do
 
   use ExUnit.Case, async: true
-  use ErpsTest.ServerCase
 
   @moduletag :server
 
