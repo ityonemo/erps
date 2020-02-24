@@ -30,8 +30,13 @@ defmodule ErpsTest.Callbacks.ClientTest do
 
     @impl true
     def handle_continue(continue, state) do
-      if is_pid(state), do: send(state, continue)
-      {:noreply, state}
+      if is_pid(state), do: send(state, :continued)
+      continue
+    end
+
+    @impl true
+    def handle_info(info, state) do
+      info
     end
 
     @impl true
@@ -53,7 +58,7 @@ defmodule ErpsTest.Callbacks.ClientTest do
     test "the client can process a noreply with continuation", %{server: svr} do
       Client.start_link(svr)
       Process.sleep(20)
-      Server.push(svr, {:noreply, self(), {:continue, :continued}})
+      Server.push(svr, {:noreply, self(), {:continue, {:noreply, self()}}})
       Process.sleep(20)
       Server.push(svr, {:noreply, :clear})
       assert_receive :pong
@@ -70,9 +75,57 @@ defmodule ErpsTest.Callbacks.ClientTest do
     end
   end
 
-  # continuations
+  describe "when instrumented with a handle_continue response" do
+    test "the client can process a {:noreply, state}", %{server: svr} do
+      Client.start_link(svr)
+      Process.sleep(20)
+      Server.push(svr, {:noreply, self(), {:continue, {:noreply, self()}}})
+      assert_receive :continued
+    end
 
-  # handle_info
+    test "the client can process a noreply with a continuation", %{server: svr} do
+      Client.start_link(svr)
+      Process.sleep(20)
+      Server.push(svr, {:noreply, self(), {:continue, {:noreply, self(), {:continue, {:noreply, self()}}}}})
+      assert_receive :continued
+      assert_receive :continued
+    end
+
+    test "the client can process a stop message", %{server: svr} do
+      Client.start(svr)
+      Process.sleep(20)
+      Server.push(svr, {:noreply, self(), {:continue, {:stop, :normal, self()}}})
+      assert_receive :continued
+      assert_receive :normal
+    end
+  end
+
+  describe "when instrumented with a handle_info response" do
+    test "the client can process a {:noreply, state}", %{server: svr} do
+      {:ok, client} = Client.start_link(svr)
+      Process.sleep(20)
+      send(client, {:noreply, self()})
+      Server.push(svr, {:noreply, :clear})
+      assert_receive :pong
+    end
+
+    test "the client can process a noreply with a continuation", %{server: svr} do
+      {:ok, client} = Client.start_link(svr)
+      Process.sleep(20)
+      send(client, {:noreply, self(), {:continue, {:noreply, self()}}})
+      assert_receive :continued
+      Server.push(svr, {:noreply, :clear})
+      assert_receive :pong
+    end
+
+    test "the client can process a stop message", %{server: svr} do
+      {:ok, client} = Client.start(svr)
+      Process.sleep(20)
+      send(client, {:stop, :normal, self()})
+      assert_receive :normal
+      refute Process.alive?(client)
+    end
+  end
 
   describe "the terminate/2 callback is called" do
     test "when the server pushes a stop command", %{server: svr} do

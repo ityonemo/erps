@@ -56,7 +56,7 @@ defmodule Erps.Client do
   end
 
   @impl true
-  def handle_info({:tcp, _socket, data}, state) do
+  def handle_info({:tcp, socket, data}, state = %{socket: socket}) do
     case :erlang.binary_to_term(data) do
       {:"$push", value} ->
         push_impl(value, state)
@@ -67,6 +67,11 @@ defmodule Erps.Client do
   end
   def handle_info({:tcp_closed, socket}, state = %{socket: socket}) do
     {:stop, :tcp_closed, state}
+  end
+  def handle_info(info, state = %{module: module}) do
+    info
+    |> module.handle_info(state.data)
+    |> process_noreply(state)
   end
 
   @spec push_impl(push :: term, state) :: {:noreply, state} | {:stop, term, state}
@@ -144,6 +149,7 @@ defmodule Erps.Client do
   """
   @callback handle_push(push :: term, state :: term) ::
     {:noreply, new_state}
+    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
     | {:stop, reason :: term, new_state}
   when new_state: term
 
