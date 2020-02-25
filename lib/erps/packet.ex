@@ -38,12 +38,19 @@ defmodule Erps.Packet do
   @empty_key <<0::16 * 8>>
   @empty_sig <<0::32 * 8>>
 
-  @spec decode(any) ::
-          {:error, :badarg | <<_::64, _::_*8>>} | {:ok, Erps.Packet.t()} | Erps.Packet.t()
-  def decode(<<0>>) do
-    %__MODULE__{type: :keepalive}
-  end
+  @type decode_option ::
+    {:verification, (binary, binary -> boolean)} |
+    {:identifier, String.t} |
+    {:versions, String.t} |
+    {:safe, boolean}
+
+  @spec decode(binary, [decode_option]) ::
+          {:error, term} | {:ok, Erps.Packet.t()}
+
   def decode(packet, opts \\ [])
+  def decode(<<0>>, _) do
+    {:ok, %__MODULE__{type: :keepalive}}
+  end
   def decode(packet = <<
       code, v1, v2, v3,
       rpc_ident::binary-size(12),
@@ -52,9 +59,12 @@ defmodule Erps.Packet do
       payload_size::32>> <> payload, opts)
       when (code in @valid_codes) and (:erlang.size(payload) == payload_size) do
 
+    # key options to use in our conditional checking pipeline
     verification = opts[:verification]
     identifier = opts[:identifier]
     version_req = opts[:versions]
+
+    # set the appropriate lambda to use for unpickling.
     binary_to_term = if opts[:safe] do
       &:erlang.binary_to_term(&1, [:safe])
     else
@@ -91,6 +101,7 @@ defmodule Erps.Packet do
   end
   def decode(_, _), do: {:error, "malformed packet"}
 
+  @spec empty_sig(binary) :: binary
   defp empty_sig(<<prefix::binary-size(32), _ :: binary-size(32), rest :: binary>>) do
     <<prefix :: binary, @empty_sig :: binary, rest :: binary>>
   end

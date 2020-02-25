@@ -98,6 +98,6 @@ defmodule ErpsTest.Packet.DecodeTest do
   end
 
   test "a single zero byte is a keepalive packet" do
-    assert %Packet{type: :keepalive} = Packet.decode(<<0>>)
+    assert {:ok, %Packet{type: :keepalive}} = Packet.decode(<<0>>)
   end
 end
