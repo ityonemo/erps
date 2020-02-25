@@ -14,8 +14,8 @@ defmodule Erps.Packet do
     rpc_id:       "",
     hmac_key:     <<0::16 * 8>>,
     signature:    <<0::32 * 8>>,
-    payload_size: "",
-    payload:      0,
+    payload_size: 0,
+    payload:      "",
   ]
 
   @type_to_code %{keepalive: 0, error: 1, call: 2, cast: 4, resp: 6, push: 8}
@@ -38,6 +38,8 @@ defmodule Erps.Packet do
   @empty_key <<0::16 * 8>>
   @empty_sig <<0::32 * 8>>
 
+  @spec decode(any) ::
+          {:error, :badarg | <<_::64, _::_*8>>} | {:ok, Erps.Packet.t()} | Erps.Packet.t()
   def decode(<<0>>) do
     %__MODULE__{type: :keepalive}
   end
