@@ -129,6 +129,25 @@ defmodule Erps.Client do
   #############################################################################
   ## API Definition
 
+  @doc """
+  Invoked to set up the process.  Like `GenServer.init/1`, this function is
+  called from inside the process immediately after `start_link/3` or `start/3`.
+
+  ### Return codes
+  - `{:ok, state}` a succesful startup of your intialization logic and sets the
+    internal state of your server to `state`.
+  - `{:ok, state, timeout}` the above, plus a :timeout atom will be sent to
+    `c:handle_info/2` *if no other messages come by*.
+  - `{:ok, state, :hibernate}` successful startup, followed by a hibernation
+    event (see `:erlang.hibernate/3`)
+  - `{:ok, state, {:continue, term}}` successful startup, and causes a
+    continuation to be triggered after the message is handled, sent to
+    `c:handle_continue/3`
+  - `:ignore` - Drop the gen_server creation request, because for some reason
+    it shouldn't have started.
+  - `{:stop, reason}` - a failure in creating the gen_server.  Results in
+    `{:error, reason}` being propagated as the result of the start_link
+  """
   @callback init(init_arg :: term()) ::
     {:ok, state}
     | {:ok, state, timeout() | :hibernate | {:continue, term()}}
@@ -139,13 +158,11 @@ defmodule Erps.Client do
   @doc """
   Invoked to handle `Erps.Server.push/2` messages.
 
-  `push` is the push message sent by a push/2 and `state` is the current
-  state of the `Erps.Client`.
+  `push` is the push message sent by a `Erps.Server.push/2` and `state` is the
+  current state of the `Erps.Client`.
 
   ### Return codes
-  - `{:noreply, new_state}` continues the loop with new state `new_state`
-  - `{:stop, reason, new_state}` terminates the loop, passing `new_state`
-    to `c:terminate/2`, if it's implemented.
+  see return codes for `handle_continue/2`
   """
   @callback handle_push(push :: term, state :: term) ::
     {:noreply, new_state}
@@ -153,11 +170,39 @@ defmodule Erps.Client do
     | {:stop, reason :: term, new_state}
   when new_state: term
 
+  @doc """
+  Invoked handle general messages sent to the client process.  Most useful
+  if the client needs to be attentive to system messages, such as nodedown
+  or monitored processes, but also useful for internal timeouts.
+
+  ### Return codes
+  see return codes for `handle_continue/2`
+  """
   @callback handle_info(msg :: :timeout | term(), state :: term()) ::
     {:noreply, new_state}
     | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
     | {:stop, reason :: term(), new_state}
     when new_state: term()
+
+  @doc """
+  Invoked when an internal callback requests a continuation, using `{:noreply,
+  state, {:continue, continuation}}`.  The continuation is passed as the first
+  argument of this callback.  Most useful if `c:init/2` functionality is
+  long-running and needs to be broken up into separate parts so that the
+  calling `start_link/2` doesn't block.
+
+  ### Return codes
+  - `{:noreply, new_state}` continues the loop with new state `new_state`
+  - `{:noreply, new_state, timeout}` causes a :timeout message to be sent to
+    `c:handle_info/2` *if no other message comes by*
+  - `{:noreply, new_state, :hibernate}`, causes a hibernation event (see
+    `:erlang.hibernate/3`)
+  - `{:noreply, new_state, {:continue, term}}` causes a continuation to be
+    triggered after the message is handled, it will be sent to
+    `c:handle_continue/3`
+  - `{:stop, reason, new_state}` terminates the loop, passing `new_state`
+    to `c:terminate/2`, if it's implemented.
+  """
 
   @callback  handle_continue(continue :: term(), state :: term()) ::
     {:noreply, new_state}
@@ -167,7 +212,7 @@ defmodule Erps.Client do
 
   @doc """
   Invoked when the client is about to exit, usually due to `handle_push/2`
-  sending a `{:stop, reason, new_state}` tuple, but also if the TCP
+  returning a `{:stop, reason, new_state}` tuple, but also if the TCP
   connection happens to go down.
   """
   @callback terminate(reason, state :: term) :: term
