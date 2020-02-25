@@ -28,13 +28,15 @@ defmodule Erps.Server do
   @impl true
   def init({module, param, inner_opts}) do
     port = inner_opts[:port] || 0
-    case :gen_tcp.listen(port, [:binary, active: true]) do
+    case :gen_tcp.listen(port, [:binary, active: true, reuseaddr: true]) do
       {:ok, socket} ->
         # kick off the accept loop.
         Process.send_after(self(), :accept, 0)
         param
         |> module.init
         |> process_init(module: module, port: port, socket: socket)
+      {:error, what} ->
+        {:stop, what}
     end
   end
 
