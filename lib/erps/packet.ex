@@ -18,7 +18,7 @@ defmodule Erps.Packet do
     payload:      0,
   ]
 
-  @type_to_code %{keepalive: 0, error: 1, call: 2, cast: 4, push: 8}
+  @type_to_code %{keepalive: 0, error: 1, call: 2, cast: 4, resp: 6, push: 8}
   @code_to_type %{0 => :keepalive, 1 => :error, 2 => :call, 4 => :cast, 8 => :push}
   @valid_codes Map.keys(@code_to_type)
 
@@ -38,6 +38,9 @@ defmodule Erps.Packet do
   @empty_key <<0::16 * 8>>
   @empty_sig <<0::32 * 8>>
 
+  def decode(<<0>>) do
+    %__MODULE__{type: :keepalive}
+  end
   def decode(packet, opts \\ [])
   def decode(packet = <<
       code, v1, v2, v3,
