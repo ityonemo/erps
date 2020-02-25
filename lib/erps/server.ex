@@ -4,6 +4,7 @@ defmodule Erps.Server do
       @behaviour Erps.Server
 
       # define a set of "magic functions".
+      def port(srv), do: Erps.Server.port(srv)
       def push(srv, push), do: Erps.Server.push(srv, push)
       def connections(srv), do: Erps.Server.connections(srv)
       def disconnect(srv, port), do: Erps.Server.disconnect(srv, port)
@@ -231,5 +232,8 @@ defmodule Erps.Server do
     | {:stop, reason :: term(), new_state}
     when new_state: term()
 
-  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2
+  @callback terminate(reason, state :: term) :: term
+  when reason: :normal | :shutdown | {:shutdown, term}
+
+  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2, terminate: 2
 end

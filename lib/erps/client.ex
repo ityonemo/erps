@@ -218,5 +218,5 @@ defmodule Erps.Client do
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}
 
-  @optional_callbacks handle_push: 2, terminate: 2
+  @optional_callbacks handle_continue: 2, handle_info: 2, handle_push: 2, terminate: 2
 end

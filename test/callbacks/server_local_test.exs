@@ -13,9 +13,9 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     def start(test_pid) do
       Erps.Server.start(__MODULE__, test_pid)
     end
-    def init(val), do: {:ok, val}
 
-    def port(srv), do: Erps.Server.port(srv)
+    @impl true
+    def init(val), do: {:ok, val}
 
     def reply(srv, to_whom, what) do
       GenServer.call(srv, {:reply, to_whom, what})
@@ -123,7 +123,7 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
         try do
           GenServer.call(server, :foo)
         catch
-          :exit, value -> :died
+          :exit, _value -> :died
         end
       end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end
@@ -149,7 +149,6 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     end
 
     test "a local client can cast a stop", %{server: server} do
-      ping_task = Task.async(fn -> receive do any -> any end end)
       assert :ok = GenServer.cast(server, :foo)
       receive do {:casted, :foo} -> send(server, {:stop, :normal, self()}) end
       Process.sleep(20)

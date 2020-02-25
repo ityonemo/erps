@@ -10,12 +10,10 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
   defmodule Server do
     use Erps.Server
 
-    def start(test_pid) do
-      Erps.Server.start(__MODULE__, test_pid)
-    end
-    def init(val), do: {:ok, val}
+    def start(test_pid), do: Erps.Server.start(__MODULE__, test_pid)
 
-    def port(srv), do: Erps.Server.port(srv)
+    @impl true
+    def init(val), do: {:ok, val}
 
     def reply(srv, to_whom, what) do
       GenServer.call(srv, {:reply, to_whom, what})
@@ -151,7 +149,6 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
     end
 
     test "a remote client can cast a stop", %{client: client, server: server} do
-      ping_task = Task.async(fn -> receive do any -> any end end)
       assert :ok = Client.cast(client, :foo)
       receive do {:casted, :foo} -> send(server, {:stop, :normal, self()}) end
       Process.sleep(20)

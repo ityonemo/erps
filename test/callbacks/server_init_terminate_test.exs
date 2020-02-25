@@ -8,6 +8,8 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
 
   defmodule Server do
 
+    @behaviour Erps.Server
+
     def start(test_pid) do
       Erps.Server.start(__MODULE__, test_pid)
     end
@@ -70,7 +72,6 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
     end
 
     test "server can be sent into ignore from init" do
-      test_pid = self()
       async = Task.async(fn ->
         receive do {:init, srv} -> send(srv, :ignore) end
       end)
@@ -78,7 +79,6 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
     end
 
     test "server can be stopped by init" do
-      test_pid = self()
       async = Task.async(fn ->
         receive do {:init, srv} -> send(srv, {:stop, "foo"}) end
       end)

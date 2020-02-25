@@ -16,9 +16,6 @@ defmodule ErpsTest.ClientCase do
 
         def start_link(val), do: Erps.Server.start_link(__MODULE__, val, [])
         def init(val), do: {:ok, val}
-
-        def port(srv), do: Erps.Server.port(srv)
-        def push(srv, val), do: Erps.Server.push(srv, val)
       end
     end
   end

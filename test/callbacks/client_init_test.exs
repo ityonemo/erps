@@ -38,8 +38,10 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
       async = Task.async(fn ->
         receive do {:init, client_pid} -> send(client_pid, {:ok, test_pid}) end
       end)
-      {:ok, client} = Client.start_link(server, async.pid)
+      Client.start_link(server, async.pid)
+
       Process.sleep(50)
+
       Server.push(server, :ping)
       assert_receive :ping
     end
@@ -51,12 +53,13 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
           {:init, client_pid} -> send(client_pid, {:ok, test_pid, {:continue, :continued}})
         end
       end)
-      {:ok, client} = Client.start_link(server, async.pid)
+
+      Client.start_link(server, async.pid)
+
       assert_receive :continued
     end
 
     test "can just ignore", %{server: server} do
-      test_pid = self()
       async = Task.async(fn ->
         receive do {:init, client_pid} -> send(client_pid, :ignore) end
       end)
@@ -64,7 +67,6 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
     end
 
     test "can stop", %{server: server} do
-      test_pid = self()
       async = Task.async(fn ->
         receive do {:init, client_pid} -> send(client_pid, {:stop, :abnormal}) end
       end)

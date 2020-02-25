@@ -35,9 +35,7 @@ defmodule ErpsTest.Callbacks.ClientTest do
     end
 
     @impl true
-    def handle_info(info, state) do
-      info
-    end
+    def handle_info(info, _state), do: info
 
     @impl true
     def terminate(reason, state) do
