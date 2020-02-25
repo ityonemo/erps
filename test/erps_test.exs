@@ -41,7 +41,6 @@ defmodule ErpsTest do
     end
   end
 
-
   describe "An Erps server" do
     test "can accept a call" do
       {:ok, server} = TestServer.start_link(:waiting)

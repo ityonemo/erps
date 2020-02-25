@@ -1,3 +1,5 @@
+# credo:disable-for-this-file Credo.Check.Readability.ModuleDoc
+
 defmodule ErpsTest.ClientCase do
 
   #

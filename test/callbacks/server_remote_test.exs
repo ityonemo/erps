@@ -15,7 +15,6 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
     end
     def init(val), do: {:ok, val}
 
-    # TODO: make this automagical.
     def port(srv), do: Erps.Server.port(srv)
 
     def reply(srv, to_whom, what) do

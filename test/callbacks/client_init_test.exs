@@ -32,8 +32,6 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
     end
   end
 
-  # TODO: review use of the test_pid variable globally.
-
   describe "the init/1 function" do
     test "can return {:ok, state}", %{server: server} do
       test_pid = self()
