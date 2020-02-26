@@ -2,13 +2,31 @@ defmodule Erps.Client do
 
   @behaviour GenServer
 
-  defmacro __using__(_opts) do
+  @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
+
+  alias Erps.Packet
+
+  defmacro __using__(opts) do
+
+    version = if opts[:version] do
+      Version.parse!(opts[:version])
+    else
+      @zero_version
+    end
+
+    base_packet = Packet
+    |> struct(type: :keepalive, version: version)
+    |> Macro.escape
+
+    Module.register_attribute(__CALLER__.module, :base_packet, persist: true)
+
     quote do
       @behaviour Erps.Client
+      @base_packet unquote(base_packet)
     end
   end
 
-  defstruct [:module, :socket, :server, :port, :data]
+  defstruct [:module, :socket, :server, :port, :data, :base_packet]
 
   @typep state :: %__MODULE__{
     module: module,
@@ -16,9 +34,9 @@ defmodule Erps.Client do
     server: :inet.address,
     port: :inet.port_number,
     data: term,
+    base_packet: Packet.t
   }
 
-  alias Erps.Packet
   require Logger
 
   def start(module, state, opts) do
@@ -35,11 +53,18 @@ defmodule Erps.Client do
   def init({module, start, opts}) do
     port = opts[:port]
     server = opts[:server]
+
+    # stash the base packet in the process registry.
+    [base_packet] = module.__info__(:attributes)[:base_packet]
+
     case :gen_tcp.connect(server, port, [:binary, active: true]) do
       {:ok, socket} ->
         start
         |> module.init()
-        |> process_init([module: module, socket: socket] ++ opts)
+        |> process_init([
+          module: module,
+          socket: socket,
+          base_packet: base_packet] ++ opts)
     end
   end
 
@@ -58,10 +83,12 @@ defmodule Erps.Client do
 
   @impl true
   def handle_cast(val, state) do
-    tcp_data = Packet.encode(%Packet{
-      type: :cast,
-      payload: val
-    })
+    #instrument data into the packet and convert to binary.
+
+    tcp_data = state.base_packet
+    |> struct(type: :cast, payload: val)
+    |> Packet.encode
+
     :gen_tcp.send(state.socket, tcp_data)
     {:noreply, state}
   end
