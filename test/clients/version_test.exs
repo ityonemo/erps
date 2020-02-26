@@ -38,7 +38,6 @@ defmodule ErpsTest.Client.VersionTest do
     {:ok, port: port}
   end
 
-  @tag :one
   test "a cast from a client is branded with its version", %{port: port} do
     {:ok, client} = Client.start_link(port)
 
@@ -50,4 +49,14 @@ defmodule ErpsTest.Client.VersionTest do
     assert "0.1.3" == "#{packet.version}"
   end
 
+  test "a call from a client is branded with its version", %{port: port} do
+    {:ok, client} = Client.start_link(port)
+
+    spawn_link(fn -> Erps.Client.call(client, :foo) end)
+
+    assert_receive {:tcp, _, data}
+    {:ok, packet} = Packet.decode(data)
+
+    assert "0.1.3" == "#{packet.version}"
+  end
 end

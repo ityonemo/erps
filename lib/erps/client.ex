@@ -73,10 +73,10 @@ defmodule Erps.Client do
 
   @impl true
   def handle_call(val, from, state) do
-    tcp_data = Packet.encode(%Packet{
-      type:    :call,
-      payload: {from, val}
-    })
+    tcp_data = state.base_packet
+    |> struct(type: :call, payload: {from, val})
+    |> Packet.encode
+
     :gen_tcp.send(state.socket, tcp_data)
     {:noreply, state}
   end
