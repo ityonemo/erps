@@ -12,7 +12,7 @@ defmodule Erps.Packet do
   @enforce_keys [:type]
 
   defstruct @enforce_keys ++ [
-    version:      "0.0.0",
+    version:      %Version{major: 0, minor: 0, patch: 0, pre: []},
     rpc_id:       "",
     hmac_key:     <<0::16 * 8>>,
     signature:    <<0::32 * 8>>,
@@ -20,12 +20,12 @@ defmodule Erps.Packet do
     payload:      "",
   ]
 
-  @type_to_code %{keepalive: 0, error: 1, call: 4, cast: 8, resp: 2, push: 3}
-  @code_to_type %{0 => :keepalive, 1 => :error, 4 => :call, 8 => :cast, 2 => :resp, 3 => :push}
+  @type_to_code %{keepalive: 0, error: 1, call: 4, cast: 8, reply: 2, push: 3}
+  @code_to_type %{0 => :keepalive, 1 => :error, 4 => :call, 8 => :cast, 2 => :reply, 3 => :push}
   @valid_codes Map.keys(@code_to_type)
 
   @type type ::
-    :call | :cast | :push | :error | :keepalive
+    :call | :cast | :push | :reply | :error | :keepalive
 
   @type t :: %__MODULE__{
     type:         type,
@@ -122,7 +122,7 @@ defmodule Erps.Packet do
 
     {:ok, %__MODULE__{
       type:         @code_to_type[code],
-      version:      "#{v1}.#{v2}.#{v3}",
+      version:      %Version{major: v1, minor: v2, patch: v3, pre: []},
       rpc_id:       String.trim(rpc_ident, <<0>>),
       hmac_key:     hmac_key,
       signature:    signature,
@@ -143,9 +143,9 @@ defmodule Erps.Packet do
   def encode(%__MODULE__{type: :keepalive}, _), do: <<0>>
   def encode(packet = %__MODULE__{}, opts) do
     type_code = @type_to_code[packet.type]
-    {:ok, vv} = Version.parse(packet.version)
     padded_id = pad(packet.rpc_id)
     hmac_key = packet.hmac_key
+    version = packet.version
 
     payload_binary = if opts[:compressed] do
       compression = if (opts[:compressed] === true), do: :compressed, else: {:compressed, opts[:compressed]}
@@ -156,14 +156,14 @@ defmodule Erps.Packet do
     payload_size = :erlang.size(payload_binary)
 
     assembled_binary =
-      <<type_code, vv.major, vv.minor, vv.patch,
+      <<type_code, version.major, version.minor, version.patch,
       padded_id :: binary, hmac_key :: binary,
       0::(32 * 8), payload_size :: 32,
       payload_binary::binary>>
 
     sign_func = opts[:sign_with]
     if sign_func do
-      [type_code, vv.major, vv.minor, vv.patch, padded_id,
+      [type_code, version.major, version.minor, version.patch, padded_id,
        packet.hmac_key, sign_func.(assembled_binary),
        <<payload_size :: 32>>, payload_binary]
     else

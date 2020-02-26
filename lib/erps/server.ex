@@ -16,6 +16,8 @@ defmodule Erps.Server do
 
   @behaviour GenServer
 
+  alias Erps.Packet
+
   def start(module, param, opts \\ []) do
     inner_opts = Keyword.take(opts, [:port])
     GenServer.start(__MODULE__, {module, param, inner_opts}, opts)
@@ -67,8 +69,11 @@ defmodule Erps.Server do
 
   def push(srv, value), do: GenServer.call(srv, {:"$push", value})
   defp push_impl(push, state) do
-    bindata = :erlang.term_to_binary(push)
-    Enum.each(state.connections, &:gen_tcp.send(&1, bindata))
+    tcp_data = Packet.encode(%Packet{
+      type: :push,
+      payload: push
+    })
+    Enum.each(state.connections, &:gen_tcp.send(&1, tcp_data))
     {:reply, :ok, state}
   end
 
@@ -78,7 +83,8 @@ defmodule Erps.Server do
   def call(srv, content, timeout \\ 5000), do: GenServer.call(srv, content, timeout)
 
   def reply({:remote, socket, from}, reply) do
-    :gen_tcp.send(socket, :erlang.term_to_binary({reply, from}))
+    tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
+    :gen_tcp.send(socket, tcp_data)
   end
   def reply(local_client, reply), do: GenServer.reply(local_client, reply)
 
@@ -89,7 +95,7 @@ defmodule Erps.Server do
   def handle_call(:"$port", _from, state), do: port_impl(state)
   def handle_call(:"$connections", _from, state), do: connections_impl(state)
   def handle_call({:"$disconnect", port}, _from, state), do: disconnect_impl(port, state)
-  def handle_call(push = {:"$push", _}, _from, state) do
+  def handle_call({:"$push", push}, _from, state) do
     push_impl(push, state)
   end
   def handle_call(call, from, state = %{module: module}) do
@@ -115,12 +121,15 @@ defmodule Erps.Server do
     {:noreply, new_state}
   end
   def handle_info({:tcp, socket, bin_data}, state = %{module: module}) do
-    case :erlang.binary_to_term(bin_data) do
-      {:"$call", from, data} ->
+    case Packet.decode(bin_data) do
+      {:ok, %Packet{type: :keepalive}} ->
+        {:noreply, state}
+      {:ok, %Packet{type: :call, payload: {from, data}}} ->
+        remote_from = {:remote, socket, from}
         data
-        |> module.handle_call(from, state.data)
-        |> process_call({:remote, socket, from}, state)
-      {:"$cast", data} ->
+        |> module.handle_call(remote_from, state.data)
+        |> process_call(remote_from, state)
+      {:ok, %Packet{type: :cast, payload: data}} ->
         data
         |> module.handle_cast(state.data)
         |> process_noreply(state)

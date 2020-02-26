@@ -18,6 +18,9 @@ defmodule Erps.Client do
     data: term,
   }
 
+  alias Erps.Packet
+  require Logger
+
   def start(module, state, opts) do
     inner_opts = Keyword.take(opts, [:server, :port])
     GenServer.start(__MODULE__, {module, state, inner_opts}, opts)
@@ -45,23 +48,40 @@ defmodule Erps.Client do
 
   @impl true
   def handle_call(val, from, state) do
-    :gen_tcp.send(state.socket, :erlang.term_to_binary({:"$call", from, val}))
+    tcp_data = Packet.encode(%Packet{
+      type:    :call,
+      payload: {from, val}
+    })
+    :gen_tcp.send(state.socket, tcp_data)
     {:noreply, state}
   end
 
   @impl true
   def handle_cast(val, state) do
-    :gen_tcp.send(state.socket, :erlang.term_to_binary({:"$cast", val}))
+    tcp_data = Packet.encode(%Packet{
+      type: :cast,
+      payload: val
+    })
+    :gen_tcp.send(state.socket, tcp_data)
     {:noreply, state}
   end
 
   @impl true
   def handle_info({:tcp, socket, data}, state = %{socket: socket}) do
-    case :erlang.binary_to_term(data) do
-      {:"$push", value} ->
-        push_impl(value, state)
-      {reply, from} ->
+    case Packet.decode(data) do
+      {:error, error} ->
+        Logger.error(error)
+        {:noreply, state}
+      {:ok, %Packet{type: :push, payload: payload}} ->
+        push_impl(payload, state)
+      {:ok, %Packet{type: :reply, payload: {reply, from}}} ->
         GenServer.reply(from, reply)
+        {:noreply, state}
+      {:ok, %Packet{type: :error, payload: {reply, from}}} ->
+        GenServer.reply(from, {:error, reply})
+        {:noreply, state}
+      {:ok, %Packet{type: :error, payload: payload}} ->
+        Logger.error(payload)
         {:noreply, state}
     end
   end

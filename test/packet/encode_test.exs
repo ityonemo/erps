@@ -31,8 +31,8 @@ defmodule ErpsTest.Packet.EncodeTest do
     end
 
     test "a very basic response is encoded" do
-      assert {:ok, %Packet{type: :resp, payload: "foobar"}} =
-        %Packet{type: :resp, payload: "foobar"}
+      assert {:ok, %Packet{type: :reply, payload: "foobar"}} =
+        %Packet{type: :reply, payload: "foobar"}
         |> Packet.encode
         |> Packet.decode
     end
@@ -52,10 +52,12 @@ defmodule ErpsTest.Packet.EncodeTest do
     end
   end
 
+  @version %Version{major: 1, minor: 3, patch: 4, pre: []}
+
   describe "the component" do
     test "version is encoded" do
-      assert {:ok, %Packet{version: "0.1.3"}} =
-        %Packet{type: :call, version: "0.1.3"}
+      assert {:ok, %Packet{version: @version}} =
+        %Packet{type: :call, version: @version}
         |> Packet.encode
         |> Packet.decode
     end

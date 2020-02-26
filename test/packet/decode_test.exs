@@ -33,14 +33,16 @@ defmodule ErpsTest.Packet.DecodeTest do
     end
   end
 
+  @version %Version{major: 0, minor: 1, patch: 0, pre: []}
+
   describe "when filtering based on versioning info" do
     test "versions decode" do
-      assert {:ok, %Packet{type: :call, version: "0.1.0", payload: []}} =
+      assert {:ok, %Packet{type: :call, version: @version, payload: []}} =
         Packet.decode(<<4, 0, 1, 0, 0::(60 * 8), 2::32, @simplest_payload>>)
     end
 
     test "matched versions succeed" do
-      assert {:ok, %Packet{type: :call, version: "0.1.0", payload: []}} =
+      assert {:ok, %Packet{type: :call, version: @version, payload: []}} =
         Packet.decode(<<4, 0, 1, 0, 0::(60 * 8), 2::32, @simplest_payload>>, versions: "== 0.1.0")
     end
 
