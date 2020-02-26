@@ -9,11 +9,10 @@ defmodule Erps.Packet do
   # |------|---------|----------------|----------------|-----------|--------------|---------
   # | type | version | rpc identifier | HMAC key       | signature | payload size | payload
 
-  @enforce_keys [:type]
-
-  defstruct @enforce_keys ++ [
+  defstruct [
+    type:         :keepalive,
     version:      %Version{major: 0, minor: 0, patch: 0, pre: []},
-    rpc_id:       "",
+    identifier:   "",
     hmac_key:     <<0::16 * 8>>,
     signature:    <<0::32 * 8>>,
     payload_size: 0,
@@ -30,7 +29,7 @@ defmodule Erps.Packet do
   @type t :: %__MODULE__{
     type:         type,
     version:      Version.t,
-    rpc_id:       String.t,
+    identifier:   String.t,
     hmac_key:     String.t,
     signature:    binary,
     payload_size: non_neg_integer,
@@ -56,7 +55,7 @@ defmodule Erps.Packet do
   end
   def decode(packet = <<
       code, v1, v2, v3,
-      rpc_ident::binary-size(12),
+      identifierent::binary-size(12),
       hmac_key::binary-size(16),
       signature::binary-size(32),
       payload_size::32>> <> payload, opts)
@@ -76,7 +75,7 @@ defmodule Erps.Packet do
 
     cond do
       # verify that we are doing the same rpc.
-      identifier && (identifier != String.trim(rpc_ident, <<0>>)) ->
+      identifier && (identifier != String.trim(identifierent, <<0>>)) ->
         {:error, "wrong rpc"}
       # verify that we are using an acceptable version
       version_req && (not Version.match?("#{v1}.#{v2}.#{v3}", version_req)) ->
@@ -114,7 +113,7 @@ defmodule Erps.Packet do
   @spec binary_to_packet(binary, (binary -> term)) :: {:ok, t} | {:error, :badarg}
   defp binary_to_packet(
     <<code, v1, v2, v3,
-    rpc_ident::binary-size(12),
+    identifierent::binary-size(12),
     hmac_key::binary-size(16),
     signature::binary-size(32),
     payload_size::32, payload :: binary>>,
@@ -123,7 +122,7 @@ defmodule Erps.Packet do
     {:ok, %__MODULE__{
       type:         @code_to_type[code],
       version:      %Version{major: v1, minor: v2, patch: v3, pre: []},
-      rpc_id:       String.trim(rpc_ident, <<0>>),
+      identifier:       String.trim(identifierent, <<0>>),
       hmac_key:     hmac_key,
       signature:    signature,
       payload_size: payload_size,
@@ -143,7 +142,7 @@ defmodule Erps.Packet do
   def encode(%__MODULE__{type: :keepalive}, _), do: <<0>>
   def encode(packet = %__MODULE__{}, opts) do
     type_code = @type_to_code[packet.type]
-    padded_id = pad(packet.rpc_id)
+    padded_id = pad(packet.identifier)
     hmac_key = packet.hmac_key
     version = packet.version
 

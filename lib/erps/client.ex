@@ -14,8 +14,10 @@ defmodule Erps.Client do
       @zero_version
     end
 
+    options = Keyword.merge(opts, version: version)
+
     base_packet = Packet
-    |> struct(type: :keepalive, version: version)
+    |> struct(options)
     |> Macro.escape
 
     Module.register_attribute(__CALLER__.module, :base_packet, persist: true)

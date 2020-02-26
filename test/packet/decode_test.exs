@@ -18,12 +18,12 @@ defmodule ErpsTest.Packet.DecodeTest do
 
   describe "when filtering based on rpc identifier" do
     test "identifiers decode" do
-      assert {:ok, %Packet{type: :call, rpc_id: "foo", payload: []}} =
+      assert {:ok, %Packet{type: :call, identifier: "foo", payload: []}} =
         Packet.decode(<<4, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>)
     end
 
     test "matched identifiers succeed" do
-      assert {:ok, %Packet{type: :call, rpc_id: "foo", payload: []}} =
+      assert {:ok, %Packet{type: :call, identifier: "foo", payload: []}} =
         Packet.decode(<<4, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>, identifier: "foo")
     end
 
