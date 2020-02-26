@@ -143,7 +143,7 @@ defmodule ErpsTest.Client.ParameterTest do
   end
 
   @compressible_payload {%{payload: "payload", loadpay: "fooled",
-  payday: "stuped", daycare: "duped"}, :crypto.strong_rand_bytes(24),
+  payday: "failed", daycare: "duped"}, :crypto.strong_rand_bytes(24),
   ["payload", "foolish"]}
 
   describe "when the client is instrumented with compression" do
@@ -169,6 +169,168 @@ defmodule ErpsTest.Client.ParameterTest do
       assert_receive {:tcp, _, compressed_high}
 
       assert :erlang.size(compressed_low) > :erlang.size(compressed_high)
+    end
+  end
+
+  defmodule ClientSignatureLocal do
+    @localhost {127, 0, 0, 1}
+
+    use Erps.Client, sign_with: :signature
+
+    @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
+    @hmac_secret :crypto.strong_rand_bytes(32)
+
+    def start_link(port) do
+      Erps.Client.start_link(__MODULE__, port,
+        server: @localhost,
+        port: port)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+
+    def hmac_key, do: @hmac_key
+
+    def signature(binary) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
+    end
+
+    def verification(binary, @hmac_key, signature) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary) == signature
+    end
+  end
+
+  defmodule ClientSignatureLocalHmacFn do
+    @localhost {127, 0, 0, 1}
+
+    use Erps.Client, sign_with: :signature
+
+    @hmac_key :hmac_key
+    @hmac_secret :crypto.strong_rand_bytes(32)
+
+    @hmac_fn_value fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
+
+    def start_link(port) do
+      Erps.Client.start_link(__MODULE__, port,
+        server: @localhost,
+        port: port)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+
+    def hmac_key, do: @hmac_fn_value
+
+    def signature(binary) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
+    end
+
+    def verification(binary, @hmac_fn_value, signature) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary) == signature
+    end
+  end
+
+  defmodule ClientSignatureLocalHmacRemoteFn do
+    @localhost {127, 0, 0, 1}
+
+    defmodule Remote do
+      @hmac_fn_value fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
+
+      def key, do: @hmac_fn_value
+    end
+
+    use Erps.Client, sign_with: :signature
+
+    @hmac_key {Remote, :key}
+    @hmac_secret :crypto.strong_rand_bytes(32)
+
+    def start_link(port) do
+      Erps.Client.start_link(__MODULE__, port,
+        server: @localhost,
+        port: port)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+
+    def hmac_key, do: Remote.key
+
+    def signature(binary) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
+    end
+
+    def verification(binary, _, signature) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary) == signature
+    end
+  end
+
+  defmodule ClientSignatureRemote do
+    @localhost {127, 0, 0, 1}
+
+    use Erps.Client, sign_with: {__MODULE__.Remote, :signature}
+
+    defmodule Remote do
+      @hmac_secret :crypto.strong_rand_bytes(32)
+
+      def signature(binary, _) do
+        :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
+      end
+    end
+
+    @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
+
+    def start_link(port) do
+      Erps.Client.start_link(__MODULE__, port,
+        server: @localhost,
+        port: port)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+
+    def hmac_key, do: @hmac_key
+
+    def verification(binary, @hmac_key, signature) do
+      Remote.signature(binary, @hmac_key) == signature
+    end
+  end
+
+  describe "when the client is instrumented with signature" do
+    test "it looks for local @hmac_key value", %{port: port} do
+      {:ok, client1} = ClientSignatureLocal.start_link(port)
+      Erps.Client.cast(client1, :foo)
+      assert_receive {:tcp, _, signed_data}
+
+      assert {:ok, _packet} =
+        Packet.decode(signed_data,
+          verification: &ClientSignatureLocal.verification/3)
+    end
+
+    test "it looks for local @hmac_key zero arity fn", %{port: port} do
+      {:ok, client1} = ClientSignatureLocalHmacFn.start_link(port)
+      Erps.Client.cast(client1, :foo)
+      assert_receive {:tcp, _, signed_data}
+
+      assert {:ok, _packet} =
+        Packet.decode(signed_data,
+          verification: &ClientSignatureLocalHmacFn.verification/3)
+    end
+
+    test "it looks for remote @hmac_key zero arity fn", %{port: port} do
+      {:ok, client1} = ClientSignatureLocalHmacRemoteFn.start_link(port)
+      Erps.Client.cast(client1, :foo)
+      assert_receive {:tcp, _, signed_data}
+
+      assert {:ok, _packet} =
+        Packet.decode(signed_data,
+          verification: &ClientSignatureLocalHmacRemoteFn.verification/3)
+    end
+
+    @tag :one
+    test "it can also use a remote signature function", %{port: port} do
+      {:ok, client1} = ClientSignatureRemote.start_link(port)
+      Erps.Client.cast(client1, :foo)
+      assert_receive {:tcp, _, signed_data}
+
+      assert {:ok, _packet} =
+        Packet.decode(signed_data,
+          verification: &ClientSignatureRemote.verification/3)
     end
   end
 

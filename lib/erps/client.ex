@@ -7,7 +7,6 @@ defmodule Erps.Client do
   alias Erps.Packet
 
   defmacro __using__(opts) do
-
     version = if opts[:version] do
       Version.parse!(opts[:version])
     else
@@ -22,6 +21,8 @@ defmodule Erps.Client do
 
     Module.register_attribute(__CALLER__.module, :base_packet, persist: true)
     Module.register_attribute(__CALLER__.module, :encode_opts, persist: true)
+    Module.register_attribute(__CALLER__.module, :hmac_key,    persist: true)
+    Module.register_attribute(__CALLER__.module, :sign_with,   persist: true)
 
     encode_opts = Keyword.take(options, [:compressed])
 
@@ -29,10 +30,15 @@ defmodule Erps.Client do
       @behaviour Erps.Client
       @base_packet unquote(base_packet)
       @encode_opts unquote(encode_opts)
+      @sign_with   unquote(options[:sign_with])
     end
   end
 
-  defstruct [:module, :socket, :server, :port, :data, :base_packet, :encode_opts]
+  defstruct [:module, :socket, :server, :port, :data, :base_packet,
+    :encode_opts, :hmac_key, :signature]
+
+  @type hmac_function :: ( -> String.t)
+  @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
 
   @typep state :: %__MODULE__{
     module:      module,
@@ -41,7 +47,9 @@ defmodule Erps.Client do
     port:        :inet.port_number,
     data:        term,
     base_packet: Packet.t,
-    encode_opts: list
+    encode_opts: list,
+    hmac_key:    nil | hmac_function,
+    signature:   nil | signing_function
   }
 
   require Logger
@@ -62,10 +70,27 @@ defmodule Erps.Client do
     server = opts[:server]
 
     attributes = module.__info__(:attributes)
+    [sign_with] = attributes[:sign_with]
 
-    # stash the base packet in the process registry.
+    hmac_key = case attributes[:hmac_key] do
+      [string] when is_binary(string) -> string
+      [atom] when is_atom(atom) ->
+        apply(module, atom, [])
+      [{mod, fun}] ->
+        apply(mod, fun, [])
+      _ -> <<0::16 * 8>>
+    end
+
     [base_packet] = attributes[:base_packet]
-    encode_opts = attributes[:encode_opts]
+
+    encode_opts = attributes[:encode_opts] ++
+    case sign_with do
+      nil -> []
+      fun when is_atom(fun) ->
+        [sign_with: &apply(module, fun, [&1])]
+      {mod, fun} ->
+        [sign_with: &apply(mod, fun, [&1, hmac_key])]
+    end
 
     case :gen_tcp.connect(server, port, [:binary, active: true]) do
       {:ok, socket} ->
@@ -74,7 +99,7 @@ defmodule Erps.Client do
         |> process_init([
           module: module,
           socket: socket,
-          base_packet: base_packet,
+          base_packet: struct(base_packet, hmac_key: hmac_key),
           encode_opts: encode_opts] ++ opts)
     end
   end
@@ -95,7 +120,6 @@ defmodule Erps.Client do
   @impl true
   def handle_cast(val, state) do
     #instrument data into the packet and convert to binary.
-
     tcp_data = state.base_packet
     |> struct(type: :cast, payload: val)
     |> Packet.encode(state.encode_opts)

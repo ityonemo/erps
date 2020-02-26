@@ -70,7 +70,7 @@ defmodule ErpsTest.Packet.EncodeTest do
     end
   end
 
-  @payload {%{payload: "payload", loadpay: "fooled", payday: "stuped", daycare: "duped"},
+  @payload {%{payload: "payload", loadpay: "fooled", payday: "failed", daycare: "duped"},
     :crypto.strong_rand_bytes(24), ["payload", "foolish"]}
 
   describe "when compression is turned on" do

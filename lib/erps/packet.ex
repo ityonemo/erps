@@ -105,8 +105,9 @@ defmodule Erps.Packet do
 
   ##############################################################################
 
+  @doc false
   @spec empty_sig(binary) :: binary
-  defp empty_sig(<<prefix::binary-size(32), _ :: binary-size(32), rest :: binary>>) do
+  def empty_sig(<<prefix::binary-size(32), _ :: binary-size(32), rest :: binary>>) do
     <<prefix :: binary, @empty_sig :: binary, rest :: binary>>
   end
 
