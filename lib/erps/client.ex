@@ -21,22 +21,27 @@ defmodule Erps.Client do
     |> Macro.escape
 
     Module.register_attribute(__CALLER__.module, :base_packet, persist: true)
+    Module.register_attribute(__CALLER__.module, :encode_opts, persist: true)
+
+    encode_opts = Keyword.take(options, [:compressed])
 
     quote do
       @behaviour Erps.Client
       @base_packet unquote(base_packet)
+      @encode_opts unquote(encode_opts)
     end
   end
 
-  defstruct [:module, :socket, :server, :port, :data, :base_packet]
+  defstruct [:module, :socket, :server, :port, :data, :base_packet, :encode_opts]
 
   @typep state :: %__MODULE__{
-    module: module,
-    socket: :gen_tcp.socket,
-    server: :inet.address,
-    port: :inet.port_number,
-    data: term,
-    base_packet: Packet.t
+    module:      module,
+    socket:      :gen_tcp.socket,
+    server:      :inet.address,
+    port:        :inet.port_number,
+    data:        term,
+    base_packet: Packet.t,
+    encode_opts: list
   }
 
   require Logger
@@ -56,8 +61,11 @@ defmodule Erps.Client do
     port = opts[:port]
     server = opts[:server]
 
+    attributes = module.__info__(:attributes)
+
     # stash the base packet in the process registry.
-    [base_packet] = module.__info__(:attributes)[:base_packet]
+    [base_packet] = attributes[:base_packet]
+    encode_opts = attributes[:encode_opts]
 
     case :gen_tcp.connect(server, port, [:binary, active: true]) do
       {:ok, socket} ->
@@ -66,7 +74,8 @@ defmodule Erps.Client do
         |> process_init([
           module: module,
           socket: socket,
-          base_packet: base_packet] ++ opts)
+          base_packet: base_packet,
+          encode_opts: encode_opts] ++ opts)
     end
   end
 
@@ -77,7 +86,7 @@ defmodule Erps.Client do
   def handle_call(val, from, state) do
     tcp_data = state.base_packet
     |> struct(type: :call, payload: {from, val})
-    |> Packet.encode
+    |> Packet.encode(state.encode_opts)
 
     :gen_tcp.send(state.socket, tcp_data)
     {:noreply, state}
@@ -89,7 +98,7 @@ defmodule Erps.Client do
 
     tcp_data = state.base_packet
     |> struct(type: :cast, payload: val)
-    |> Packet.encode
+    |> Packet.encode(state.encode_opts)
 
     :gen_tcp.send(state.socket, tcp_data)
     {:noreply, state}
