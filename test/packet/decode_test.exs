@@ -12,41 +12,41 @@ defmodule ErpsTest.Packet.DecodeTest do
   describe "when sending a call packet" do
     test "the most basic decode works" do
       assert {:ok, %Packet{type: :call, payload: []}} =
-        Packet.decode(<<2, 0::(63 * 8), 2::32, @simplest_payload>>)
+        Packet.decode(<<4, 0::(63 * 8), 2::32, @simplest_payload>>)
     end
   end
 
   describe "when filtering based on rpc identifier" do
     test "identifiers decode" do
       assert {:ok, %Packet{type: :call, rpc_id: "foo", payload: []}} =
-        Packet.decode(<<2, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>)
+        Packet.decode(<<4, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>)
     end
 
     test "matched identifiers succeed" do
       assert {:ok, %Packet{type: :call, rpc_id: "foo", payload: []}} =
-        Packet.decode(<<2, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>, identifier: "foo")
+        Packet.decode(<<4, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>, identifier: "foo")
     end
 
     test "mismatched identifiers fail" do
       assert {:error, _} =
-        Packet.decode(<<2, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>, identifier: "bar")
+        Packet.decode(<<4, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>, identifier: "bar")
     end
   end
 
   describe "when filtering based on versioning info" do
     test "versions decode" do
       assert {:ok, %Packet{type: :call, version: "0.1.0", payload: []}} =
-        Packet.decode(<<2, 0, 1, 0, 0::(60 * 8), 2::32, @simplest_payload>>)
+        Packet.decode(<<4, 0, 1, 0, 0::(60 * 8), 2::32, @simplest_payload>>)
     end
 
     test "matched versions succeed" do
       assert {:ok, %Packet{type: :call, version: "0.1.0", payload: []}} =
-        Packet.decode(<<2, 0, 1, 0, 0::(60 * 8), 2::32, @simplest_payload>>, versions: "== 0.1.0")
+        Packet.decode(<<4, 0, 1, 0, 0::(60 * 8), 2::32, @simplest_payload>>, versions: "== 0.1.0")
     end
 
     test "mismatched versions fail" do
       assert {:error, _} =
-        Packet.decode(<<2, 0, 2, 0, 0::(60 * 8), 2::32, @simplest_payload>>, versions: "== 0.1.0")
+        Packet.decode(<<4, 0, 2, 0, 0::(60 * 8), 2::32, @simplest_payload>>, versions: "== 0.1.0")
     end
   end
 
@@ -63,19 +63,21 @@ defmodule ErpsTest.Packet.DecodeTest do
 
   describe "hmac authentication can be provided" do
     test "matched signatures succeed" do
-      signature = signature_function(<<2, 0::(15 * 8), @hmac_key, 0 ::(32 * 8), 2::32, @simplest_payload>>)
+      signature = signature_function(<<4, 0::(15 * 8), @hmac_key, 0 ::(32 * 8), 2::32, @simplest_payload>>)
 
       assert {:ok, %Packet{type: :call, payload: []}} =
-        Packet.decode(<<2, 0::(15 * 8), @hmac_key, signature::binary, 2::32, @simplest_payload>>, verification: &vfn/2)
+        Packet.decode(<<4, 0::(15 * 8), @hmac_key, signature::binary, 2::32, @simplest_payload>>, verification: &vfn/2)
     end
 
     test "mismatched signatures fail" do
       signature = signature_function(<<2, 0::(15 * 8), @hmac_key, 0 ::(32 * 8), 2::32, @simplest_payload>>)
+
+      # generate a bad signature by changing the first byte to zero.
       sig_rest = :binary.part(signature, {1, 31})
       bad_sig = <<0>> <> sig_rest
 
       assert {:error, _} =
-        Packet.decode(<<2, 0::(15 * 8), @hmac_key, bad_sig::binary, 2::32, @simplest_payload>>, verification: &vfn/2)
+        Packet.decode(<<4, 0::(15 * 8), @hmac_key, bad_sig::binary, 2::32, @simplest_payload>>, verification: &vfn/2)
     end
   end
 
@@ -84,7 +86,7 @@ defmodule ErpsTest.Packet.DecodeTest do
 
   test "attempting to add an unknown atom fails in safe mode" do
     assert {:error, _} =
-      Packet.decode(<<2, 0::(63 * 8), @barfooquux_size :: 32, @barfooquux_atom>>, safe: true)
+      Packet.decode(<<4, 0::(63 * 8), @barfooquux_size :: 32, @barfooquux_atom>>, safe: true)
   end
 
   test "unknown codes result in a error" do
@@ -94,7 +96,7 @@ defmodule ErpsTest.Packet.DecodeTest do
 
   test "malformed packets result in an error" do
     assert {:error, _} =
-      Packet.decode(<<7, 0::(63 * 8), 2::32, @simplest_payload, 0>>)
+      Packet.decode(<<4, 0::(63 * 8), 2::32, @simplest_payload, 0>>)
   end
 
   test "a single zero byte is a keepalive packet" do

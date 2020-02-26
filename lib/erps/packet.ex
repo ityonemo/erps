@@ -9,7 +9,9 @@ defmodule Erps.Packet do
   # |------|---------|----------------|----------------|-----------|--------------|---------
   # | type | version | rpc identifier | HMAC key       | signature | payload size | payload
 
-  defstruct [:type,
+  @enforce_keys [:type]
+
+  defstruct @enforce_keys ++ [
     version:      "0.0.0",
     rpc_id:       "",
     hmac_key:     <<0::16 * 8>>,
@@ -18,8 +20,8 @@ defmodule Erps.Packet do
     payload:      "",
   ]
 
-  @type_to_code %{keepalive: 0, error: 1, call: 2, cast: 4, resp: 6, push: 8}
-  @code_to_type %{0 => :keepalive, 1 => :error, 2 => :call, 4 => :cast, 8 => :push}
+  @type_to_code %{keepalive: 0, error: 1, call: 4, cast: 8, resp: 2, push: 3}
+  @code_to_type %{0 => :keepalive, 1 => :error, 4 => :call, 8 => :cast, 2 => :resp, 3 => :push}
   @valid_codes Map.keys(@code_to_type)
 
   @type type ::
@@ -44,9 +46,10 @@ defmodule Erps.Packet do
     {:versions, String.t} |
     {:safe, boolean}
 
-  @spec decode(binary, [decode_option]) ::
-          {:error, term} | {:ok, Erps.Packet.t()}
+  #############################################################################
+  ## DECODING
 
+  @spec decode(binary, [decode_option]) :: {:error, term} | {:ok, t}
   def decode(packet, opts \\ [])
   def decode(<<0>>, _) do
     {:ok, %__MODULE__{type: :keepalive}}
@@ -101,11 +104,14 @@ defmodule Erps.Packet do
   end
   def decode(_, _), do: {:error, "malformed packet"}
 
+  ##############################################################################
+
   @spec empty_sig(binary) :: binary
   defp empty_sig(<<prefix::binary-size(32), _ :: binary-size(32), rest :: binary>>) do
     <<prefix :: binary, @empty_sig :: binary, rest :: binary>>
   end
 
+  @spec binary_to_packet(binary, (binary -> term)) :: {:ok, t} | {:error, :badarg}
   defp binary_to_packet(
     <<code, v1, v2, v3,
     rpc_ident::binary-size(12),
@@ -125,8 +131,49 @@ defmodule Erps.Packet do
     }}
 
   catch
+    # return unsafe arguments as badarg.
     :error, :badarg ->
       {:error, :badarg}
+  end
+
+  #############################################################################
+
+  @spec encode(t, keyword) :: iodata
+  def encode(packet, opts \\ [])
+  def encode(%__MODULE__{type: :keepalive}, _), do: <<0>>
+  def encode(packet = %__MODULE__{}, opts) do
+    type_code = @type_to_code[packet.type]
+    {:ok, vv} = Version.parse(packet.version)
+    padded_id = pad(packet.rpc_id)
+    hmac_key = packet.hmac_key
+
+    payload_binary = if opts[:compressed] do
+      compression = if (opts[:compressed] === true), do: :compressed, else: {:compressed, opts[:compressed]}
+      :erlang.term_to_binary(packet.payload, [compression, minor_version: 2])
+    else
+      :erlang.term_to_binary(packet.payload)
+    end
+    payload_size = :erlang.size(payload_binary)
+
+    assembled_binary =
+      <<type_code, vv.major, vv.minor, vv.patch,
+      padded_id :: binary, hmac_key :: binary,
+      0::(32 * 8), payload_size :: 32,
+      payload_binary::binary>>
+
+    sign_func = opts[:sign_with]
+    if sign_func do
+      [type_code, vv.major, vv.minor, vv.patch, padded_id,
+       packet.hmac_key, sign_func.(assembled_binary),
+       <<payload_size :: 32>>, payload_binary]
+    else
+      assembled_binary
+    end
+  end
+
+  defp pad(string) do
+    leftover = 12 - :erlang.size(string)
+    string <> <<0::(leftover * 8)>>
   end
 
 end
