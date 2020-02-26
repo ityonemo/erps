@@ -85,7 +85,7 @@ defmodule Erps.Packet do
       (hmac_key == @empty_key || signature == @empty_sig) && verification ->
         {:error, "authentication required"}
       # if verified, go ahead and generate the packet.
-      verification && verification.(empty_sig(packet), signature) ->
+      verification && verification.(empty_sig(packet), hmac_key, signature) ->
         binary_to_packet(packet, binary_to_term)
       verification ->
         {:error, "authentication failed"}

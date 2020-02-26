@@ -59,7 +59,7 @@ defmodule ErpsTest.Packet.DecodeTest do
     :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
   end
 
-  defp vfn(binary, signature) do
+  defp vfn(binary, @hmac_key, signature) do
     signature == signature_function(binary)
   end
 
@@ -68,7 +68,7 @@ defmodule ErpsTest.Packet.DecodeTest do
       signature = signature_function(<<4, 0::(15 * 8), @hmac_key, 0 ::(32 * 8), 2::32, @simplest_payload>>)
 
       assert {:ok, %Packet{type: :call, payload: []}} =
-        Packet.decode(<<4, 0::(15 * 8), @hmac_key, signature::binary, 2::32, @simplest_payload>>, verification: &vfn/2)
+        Packet.decode(<<4, 0::(15 * 8), @hmac_key, signature::binary, 2::32, @simplest_payload>>, verification: &vfn/3)
     end
 
     test "mismatched signatures fail" do
@@ -79,7 +79,7 @@ defmodule ErpsTest.Packet.DecodeTest do
       bad_sig = <<0>> <> sig_rest
 
       assert {:error, _} =
-        Packet.decode(<<4, 0::(15 * 8), @hmac_key, bad_sig::binary, 2::32, @simplest_payload>>, verification: &vfn/2)
+        Packet.decode(<<4, 0::(15 * 8), @hmac_key, bad_sig::binary, 2::32, @simplest_payload>>, verification: &vfn/3)
     end
   end
 

@@ -101,7 +101,7 @@ defmodule ErpsTest.Packet.EncodeTest do
   @hmac_secret :crypto.strong_rand_bytes(32)
 
   def sign(binary), do: :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
-  def verify(binary, sig), do: sig == sign(binary)
+  def verify(binary, @hmac_key, sig), do: sig == sign(binary)
 
   describe "when you sign your packet" do
     test "it can be accepted by the server" do
@@ -112,7 +112,7 @@ defmodule ErpsTest.Packet.EncodeTest do
           hmac_key: @hmac_key}
         |> Packet.encode(sign_with: &sign/1)
         |> IO.iodata_to_binary
-        |> Packet.decode(verification: &verify/2)
+        |> Packet.decode(verification: &verify/3)
     end
   end
 
