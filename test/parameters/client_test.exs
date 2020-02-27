@@ -322,7 +322,6 @@ defmodule ErpsTest.Parameters.ClientTest do
           verification: &ClientSignatureLocalHmacRemoteFn.verification/3)
     end
 
-    @tag :one
     test "it can also use a remote signature function", %{port: port} do
       {:ok, client1} = ClientSignatureRemote.start_link(port)
       Erps.Client.cast(client1, :foo)

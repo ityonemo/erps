@@ -217,4 +217,73 @@ defmodule ErpsTest.Parameters.ServerTest do
         Packet.decode(receive do {:tcp, _, packet} -> packet end)
     end
   end
+
+  defmodule ServerVerificationLocal do
+    use Erps.Server, verification: :verification
+
+    def start_link(test_pid) do
+      Erps.Server.start_link(__MODULE__, test_pid)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+
+    def handle_call(:ping, _from, test_pid) do
+      send(test_pid, {:reply, :pong, test_pid})
+    end
+
+    @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
+    @hmac_secret :crypto.strong_rand_bytes(32)
+
+    def hmac_key, do: @hmac_key
+
+    def signature(binary) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
+    end
+
+    def verification(binary, @hmac_key, signature) do
+      :crypto.mac(:hmac, :sha256, @hmac_secret, binary) == signature
+    end
+  end
+
+  describe "for a server that's got verification" do
+    @tag :one
+    test "a local function can be used for verification" do
+      {:ok, server} = ServerVerificationLocal.start_link(self())
+      {:ok, port} = ServerVerificationLocal.port(server)
+
+      {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
+
+      packet = Packet.encode(
+        %Packet{type: :call,
+          hmac_key: ServerVerificationLocal.hmac_key(),
+          payload: {:from, :ping}},
+        sign_with: &ServerVerificationLocal.signature/1)
+
+      :gen_tcp.send(sock, packet)
+
+      assert_receive {:reply, :pong, _ }, 500
+
+      assert {:ok, %Packet{type: :reply, payload: {:pong, :from}}} =
+        Packet.decode(receive do {:tcp, _, packet} -> packet end)
+    end
+
+    test "when a local function is used for verification sending an unverified payload fails" do
+      {:ok, server} = ServerVerificationLocal.start_link(self())
+      {:ok, port} = ServerVerificationLocal.port(server)
+
+      {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
+
+      packet = Packet.encode(
+        %Packet{type: :call,
+          payload: {:from, :ping}})
+
+      :gen_tcp.send(sock, packet)
+
+      refute_receive {:reply, :pong, _}, 500
+
+      assert {:ok, %Packet{type: :error}} =
+        Packet.decode(receive do {:tcp, _, packet} -> packet end)
+    end
+  end
+
 end

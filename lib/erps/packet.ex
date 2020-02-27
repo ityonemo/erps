@@ -55,7 +55,7 @@ defmodule Erps.Packet do
   end
   def decode(packet = <<
       code, v1, v2, v3,
-      identifierent::binary-size(12),
+      pkt_identifier::binary-size(12),
       hmac_key::binary-size(16),
       signature::binary-size(32),
       payload_size::32>> <> payload, opts)
@@ -63,7 +63,7 @@ defmodule Erps.Packet do
 
     # key options to use in our conditional checking pipeline
     verification = opts[:verification]
-    identifier = opts[:identifier]
+    srv_identifier = opts[:identifier]
     version_req = opts[:versions]
 
     # set the appropriate lambda to use for unpickling.
@@ -75,7 +75,7 @@ defmodule Erps.Packet do
 
     cond do
       # verify that we are doing the same rpc.
-      identifier && (identifier != String.trim(identifierent, <<0>>)) ->
+      srv_identifier && (srv_identifier != String.trim(pkt_identifier, <<0>>)) ->
         {:error, "wrong rpc"}
       # verify that we are using an acceptable version
       version_req && (not Version.match?("#{v1}.#{v2}.#{v3}", version_req)) ->
@@ -114,7 +114,7 @@ defmodule Erps.Packet do
   @spec binary_to_packet(binary, (binary -> term)) :: {:ok, t} | {:error, :badarg}
   defp binary_to_packet(
     <<code, v1, v2, v3,
-    identifierent::binary-size(12),
+    identifier::binary-size(12),
     hmac_key::binary-size(16),
     signature::binary-size(32),
     payload_size::32, payload :: binary>>,
@@ -123,7 +123,7 @@ defmodule Erps.Packet do
     {:ok, %__MODULE__{
       type:         @code_to_type[code],
       version:      %Version{major: v1, minor: v2, patch: v3, pre: []},
-      identifier:       String.trim(identifierent, <<0>>),
+      identifier:   String.trim(identifier, <<0>>),
       hmac_key:     hmac_key,
       signature:    signature,
       payload_size: payload_size,

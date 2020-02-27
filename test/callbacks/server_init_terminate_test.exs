@@ -8,7 +8,7 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
 
   defmodule Server do
 
-    @behaviour Erps.Server
+    use Erps.Server
 
     def start(test_pid) do
       Erps.Server.start(__MODULE__, test_pid)
@@ -78,6 +78,7 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
       assert :ignore == Server.start_link(async.pid)
     end
 
+    @tag :one
     test "server can be stopped by init" do
       async = Task.async(fn ->
         receive do {:init, srv} -> send(srv, {:stop, "foo"}) end

@@ -2,8 +2,10 @@ defmodule Erps.Server do
   defmacro __using__(opts) do
 
     decode_opts = Keyword.take(opts, [:identifier, :versions, :safe])
+    verification = opts[:verification]
 
     Module.register_attribute(__CALLER__.module, :decode_opts, persist: true)
+    Module.register_attribute(__CALLER__.module, :verification, persist: true)
 
     quote do
       @behaviour Erps.Server
@@ -15,6 +17,7 @@ defmodule Erps.Server do
       def disconnect(srv, port), do: Erps.Server.disconnect(srv, port)
 
       @decode_opts unquote(decode_opts)
+      @verification unquote(verification)
     end
   end
 
@@ -39,7 +42,14 @@ defmodule Erps.Server do
   def init({module, param, inner_opts}) do
     port = inner_opts[:port] || 0
 
+    verification_opts = case module.__info__(:attributes)[:verification] do
+      [nil] -> []
+      [fun] when is_atom(fun) ->
+        [verification: &apply(module, fun, [&1, &2, &3])]
+    end
+
     decode_opts = module.__info__(:attributes)[:decode_opts]
+    ++ verification_opts
 
     case :gen_tcp.listen(port, [:binary, active: true, reuseaddr: true]) do
       {:ok, socket} ->
