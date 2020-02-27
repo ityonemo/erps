@@ -21,7 +21,7 @@ defmodule Erps.Server do
     end
   end
 
-  defstruct [:module, :data, :port, :socket, :decode_opts,
+  defstruct [:module, :data, :port, :socket, :decode_opts, :filter,
     connections: []]
 
   @behaviour GenServer
@@ -53,6 +53,12 @@ defmodule Erps.Server do
     decode_opts = module.__info__(:attributes)[:decode_opts]
     ++ verification_opts
 
+    filter = if function_exported?(module, :filter, 2) do
+      &module.filter/2
+    else
+      &default_filter/2
+    end
+
     case :gen_tcp.listen(port, [:binary, active: true, reuseaddr: true]) do
       {:ok, socket} ->
         # kick off the accept loop.
@@ -60,7 +66,7 @@ defmodule Erps.Server do
         param
         |> module.init
         |> process_init(module: module, port: port,
-          socket: socket, decode_opts: decode_opts)
+          socket: socket, decode_opts: decode_opts, filter: filter)
       {:error, what} ->
         {:stop, what}
     end
@@ -143,24 +149,32 @@ defmodule Erps.Server do
     Process.send_after(self(), :accept, 0)
     {:noreply, new_state}
   end
-  def handle_info({:tcp, socket, bin_data}, state = %{module: module}) do
+  def handle_info({:tcp, socket, bin_data}, state = %{module: module, filter: filter}) do
     case Packet.decode(bin_data, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
         {:noreply, state}
       {:ok, %Packet{type: :call, payload: {from, data}}} ->
         remote_from = {:remote, socket, from}
+        unless filter.(data, :call), do: throw {:error, "filtered"}
+
         data
         |> module.handle_call(remote_from, state.data)
         |> process_call(remote_from, state)
       {:ok, %Packet{type: :cast, payload: data}} ->
+        unless filter.(data, :cast), do: throw {:error, "filtered"}
+
         data
         |> module.handle_cast(state.data)
         |> process_noreply(state)
-      {:error, any} ->
-        tcp_data = Packet.encode(%Packet{type: :error, payload: any})
-        :gen_tcp.send(socket, tcp_data)
-        {:noreply, state}
+      e = {:error, _any} ->
+        throw e
     end
+
+  catch
+    {:error, any} ->
+      tcp_data = Packet.encode(%Packet{type: :error, payload: any})
+      :gen_tcp.send(socket, tcp_data)
+      {:noreply, state}
   end
   def handle_info({:tcp_closed, port}, state) do
     {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
@@ -229,6 +243,8 @@ defmodule Erps.Server do
     end
   end
 
+  defp default_filter(_, _), do: true
+
   #############################################################################
   ## BEHAVIOUR CALLBACKS
 
@@ -271,5 +287,8 @@ defmodule Erps.Server do
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}
 
-  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2, terminate: 2
+  @callback filter(mode :: Packet.type, payload :: term) :: boolean
+
+  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2,
+    terminate: 2, filter: 2
 end
