@@ -212,8 +212,10 @@ defmodule Erps.Client do
   ## API Definition
 
   @doc """
-  Invoked to set up the process.  Like `GenServer.init/1`, this function is
-  called from inside the process immediately after `start_link/3` or `start/3`.
+  Invoked to set up the process.
+
+  Like `GenServer.init/1`, this function is called from inside
+  the process immediately after `start_link/3` or `start/3`.
 
   ### Return codes
   - `{:ok, state}` a succesful startup of your intialization logic and sets the
@@ -253,9 +255,11 @@ defmodule Erps.Client do
   when new_state: term
 
   @doc """
-  Invoked handle general messages sent to the client process.  Most useful
-  if the client needs to be attentive to system messages, such as nodedown
-  or monitored processes, but also useful for internal timeouts.
+  Invoked to handle general messages sent to the client process.
+
+  Most useful if the client needs to be attentive to system messages,
+  such as nodedown or monitored processes, but also useful for internal
+  timeouts.
 
   ### Return codes
   see return codes for `handle_continue/2`
@@ -268,10 +272,11 @@ defmodule Erps.Client do
 
   @doc """
   Invoked when an internal callback requests a continuation, using `{:noreply,
-  state, {:continue, continuation}}`.  The continuation is passed as the first
-  argument of this callback.  Most useful if `c:init/2` functionality is
-  long-running and needs to be broken up into separate parts so that the
-  calling `start_link/2` doesn't block.
+  state, {:continue, continuation}}`.
+
+  The continuation is passed as the first argument of this callback.  Most
+  useful if `c:init/2` functionality is long-running and needs to be broken
+  up into separate parts so that the calling `start_link/2` doesn't block.
 
   ### Return codes
   - `{:noreply, new_state}` continues the loop with new state `new_state`
@@ -293,9 +298,11 @@ defmodule Erps.Client do
     when new_state: term()
 
   @doc """
-  Invoked when the client is about to exit, usually due to `handle_push/2`
-  returning a `{:stop, reason, new_state}` tuple, but also if the TCP
-  connection happens to go down.
+  Invoked when the client is about to exit.
+
+  This would usually occur due to `handle_push/2` returning a
+  `{:stop, reason, new_state}` tuple, but also if the TCP connection
+  happens to go down.
   """
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}

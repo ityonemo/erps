@@ -1,4 +1,4 @@
-defmodule ErpsTest.Client.ParameterTest do
+defmodule ErpsTest.Parameters.ClientTest do
   use ExUnit.Case, async: true
 
   alias Erps.Packet
