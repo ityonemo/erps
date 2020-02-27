@@ -46,6 +46,8 @@ defmodule Erps.Server do
       [nil] -> []
       [fun] when is_atom(fun) ->
         [verification: &apply(module, fun, [&1, &2, &3])]
+      [{mod, fun}] ->
+        [verification: &apply(mod, fun, [&1, &2, &3])]
     end
 
     decode_opts = module.__info__(:attributes)[:decode_opts]

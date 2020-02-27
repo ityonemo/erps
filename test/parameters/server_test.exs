@@ -245,8 +245,38 @@ defmodule ErpsTest.Parameters.ServerTest do
     end
   end
 
+  defmodule ServerVerificationRemote do
+    use Erps.Server, verification: {__MODULE__.Verify, :verification}
+
+    def start_link(test_pid) do
+      Erps.Server.start_link(__MODULE__, test_pid)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+
+    def handle_call(:ping, _from, test_pid) do
+      send(test_pid, {:reply, :pong, test_pid})
+    end
+
+    defmodule Verify do
+      @hmac_secret :crypto.strong_rand_bytes(32)
+
+      def signature(binary) do
+        :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
+      end
+
+      def verification(binary, _, signature) do
+        :crypto.mac(:hmac, :sha256, @hmac_secret, binary) == signature
+      end
+    end
+
+    @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
+
+    def hmac_key, do: @hmac_key
+  end
+
   describe "for a server that's got verification" do
-    @tag :one
+    @describetag :verification
     test "a local function can be used for verification" do
       {:ok, server} = ServerVerificationLocal.start_link(self())
       {:ok, port} = ServerVerificationLocal.port(server)
@@ -270,6 +300,44 @@ defmodule ErpsTest.Parameters.ServerTest do
     test "when a local function is used for verification sending an unverified payload fails" do
       {:ok, server} = ServerVerificationLocal.start_link(self())
       {:ok, port} = ServerVerificationLocal.port(server)
+
+      {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
+
+      packet = Packet.encode(
+        %Packet{type: :call,
+          payload: {:from, :ping}})
+
+      :gen_tcp.send(sock, packet)
+
+      refute_receive {:reply, :pong, _}, 500
+
+      assert {:ok, %Packet{type: :error}} =
+        Packet.decode(receive do {:tcp, _, packet} -> packet end)
+    end
+
+    test "a remote function can be used for verification" do
+      {:ok, server} = ServerVerificationRemote.start_link(self())
+      {:ok, port} = ServerVerificationRemote.port(server)
+
+      {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
+
+      packet = Packet.encode(
+        %Packet{type: :call,
+          hmac_key: ServerVerificationRemote.hmac_key(),
+          payload: {:from, :ping}},
+        sign_with: &ServerVerificationRemote.Verify.signature/1)
+
+      :gen_tcp.send(sock, packet)
+
+      assert_receive {:reply, :pong, _ }, 500
+
+      assert {:ok, %Packet{type: :reply, payload: {:pong, :from}}} =
+        Packet.decode(receive do {:tcp, _, packet} -> packet end)
+    end
+
+    test "when a remote function is used for verification sending an unverified payload fails" do
+      {:ok, server} = ServerVerificationRemote.start_link(self())
+      {:ok, port} = ServerVerificationRemote.port(server)
 
       {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
 
