@@ -166,4 +166,55 @@ defmodule ErpsTest.Parameters.ServerTest do
         Packet.decode(receive do {:tcp, _, packet} -> packet end)
     end
   end
+
+  defmodule ServerSafe do
+    use Erps.Server, safe: true
+
+    def start_link(test_pid) do
+      Erps.Server.start_link(__MODULE__, test_pid)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+
+    def handle_call(:ping, _from, test_pid) do
+      send(test_pid, {:reply, :pong, test_pid})
+    end
+  end
+
+  @packet_foobarquux <<4, 0::(63 * 8), 14::32,
+    131, 100, 0, 10, 102, 111, 111, 98, 97, 114, 113, 117, 117, 120>>
+
+  describe "for a server that's protected with safe" do
+    test "sending a safe payload succeeds" do
+      {:ok, server} = ServerSafe.start_link(self())
+      {:ok, port} = ServerSafe.port(server)
+
+      {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
+
+      packet = Packet.encode(
+        %Packet{type: :call,
+          payload: {:from, :ping}})
+
+      :gen_tcp.send(sock, packet)
+
+      assert_receive {:reply, :pong, _ }
+
+      assert {:ok, %Packet{type: :reply, payload: {:pong, :from}}} =
+        Packet.decode(receive do {:tcp, _, packet} -> packet end)
+    end
+
+    test "sending an unsafe payload fails" do
+      {:ok, server} = ServerSafe.start_link(self())
+      {:ok, port} = ServerSafe.port(server)
+
+      {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
+
+      :gen_tcp.send(sock, @packet_foobarquux)
+
+      refute_receive {:reply, :pong, _}
+
+      assert {:ok, %Packet{type: :error}} =
+        Packet.decode(receive do {:tcp, _, packet} -> packet end)
+    end
+  end
 end
