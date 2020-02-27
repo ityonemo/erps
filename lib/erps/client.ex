@@ -4,6 +4,12 @@ defmodule Erps.Client do
 
   @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
 
+  if Mix.env() in [:dev, :test] do
+    @default_strategy Erps.TCP
+  else
+    @default_strategy Erps.TwoWayTLS
+  end
+
   alias Erps.Packet
 
   defmacro __using__(opts) do
@@ -42,7 +48,7 @@ defmodule Erps.Client do
   end
 
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
-    :encode_opts, :hmac_key, :signature]
+    :encode_opts, :hmac_key, :signature, strategy: @default_strategy]
 
   @type hmac_function :: ( -> String.t)
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
@@ -56,7 +62,8 @@ defmodule Erps.Client do
     base_packet: Packet.t,
     encode_opts: list,
     hmac_key:    nil | hmac_function,
-    signature:   nil | signing_function
+    signature:   nil | signing_function,
+    strategy:    module
   }
 
   require Logger
@@ -99,7 +106,9 @@ defmodule Erps.Client do
         [sign_with: &apply(mod, fun, [&1, hmac_key])]
     end
 
-    case :gen_tcp.connect(server, port, [:binary, active: true]) do
+    strategy = opts[:strategy] || @default_strategy
+
+    case strategy.connect(server, port, [:binary, active: true]) do
       {:ok, socket} ->
         start
         |> module.init()
@@ -115,23 +124,23 @@ defmodule Erps.Client do
   def cast(srv, val), do: GenServer.cast(srv, val)
 
   @impl true
-  def handle_call(val, from, state) do
+  def handle_call(val, from, state = %{strategy: strategy}) do
     tcp_data = state.base_packet
     |> struct(type: :call, payload: {from, val})
     |> Packet.encode(state.encode_opts)
 
-    :gen_tcp.send(state.socket, tcp_data)
+    strategy.send(state.socket, tcp_data)
     {:noreply, state}
   end
 
   @impl true
-  def handle_cast(val, state) do
+  def handle_cast(val, state = %{strategy: strategy}) do
     #instrument data into the packet and convert to binary.
     tcp_data = state.base_packet
     |> struct(type: :cast, payload: val)
     |> Packet.encode(state.encode_opts)
 
-    :gen_tcp.send(state.socket, tcp_data)
+    strategy.send(state.socket, tcp_data)
     {:noreply, state}
   end
 

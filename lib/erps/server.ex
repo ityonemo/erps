@@ -1,4 +1,11 @@
 defmodule Erps.Server do
+
+  if Mix.env() in [:dev, :test] do
+    @default_strategy Erps.TCP
+  else
+    @default_strategy Erps.TwoWayTLS
+  end
+
   defmacro __using__(opts) do
 
     decode_opts = Keyword.take(opts, [:identifier, :versions, :safe])
@@ -29,7 +36,7 @@ defmodule Erps.Server do
   end
 
   defstruct [:module, :data, :port, :socket, :decode_opts, :filter,
-    connections: []]
+    strategy: @default_strategy, connections: []]
 
   @behaviour GenServer
 
@@ -66,14 +73,16 @@ defmodule Erps.Server do
       &default_filter/2
     end
 
-    case :gen_tcp.listen(port, [:binary, active: true, reuseaddr: true]) do
+    strategy = inner_opts[:strategy] || @default_strategy
+
+    case strategy.listen(port, [:binary, active: true, reuseaddr: true]) do
       {:ok, socket} ->
         # kick off the accept loop.
         Process.send_after(self(), :accept, 0)
         param
         |> module.init
         |> process_init(module: module, port: port,
-          socket: socket, decode_opts: decode_opts, filter: filter)
+          socket: socket, decode_opts: decode_opts, filter: filter, strategy: strategy)
       {:error, what} ->
         {:stop, what}
     end
@@ -92,11 +101,11 @@ defmodule Erps.Server do
     {:reply, state.connections, state}
   end
 
-  def disconnect(srv, port), do: GenServer.call(srv, {:"$disconnect", port})
-  defp disconnect_impl(port, state = %{connections: connections}) do
-    if port in connections do
-      :gen_tcp.close(port)
-      new_connections = Enum.reject(connections, &(&1 == port))
+  def disconnect(srv, socket), do: GenServer.call(srv, {:"$disconnect", socket})
+  defp disconnect_impl(socket, state = %{connections: connections}) do
+    if socket in connections do
+      :gen_tcp.close(socket)
+      new_connections = Enum.reject(connections, &(&1 == socket))
       {:reply, :ok, %{state | connections: new_connections}}
     else
       {:reply, {:error, :enoent}, state}
@@ -104,12 +113,12 @@ defmodule Erps.Server do
   end
 
   def push(srv, value), do: GenServer.call(srv, {:"$push", value})
-  defp push_impl(push, state) do
+  defp push_impl(push, state = %{strategy: strategy}) do
     tcp_data = Packet.encode(%Packet{
       type: :push,
       payload: push
     })
-    Enum.each(state.connections, &:gen_tcp.send(&1, tcp_data))
+    Enum.each(state.connections, &strategy.send(&1, tcp_data))
     {:reply, :ok, state}
   end
 
@@ -120,7 +129,7 @@ defmodule Erps.Server do
 
   def reply({:remote, socket, from}, reply) do
     tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
-    :gen_tcp.send(socket, tcp_data)
+    send(self(), {:tcp_reply, socket, tcp_data})
   end
   def reply(local_client, reply), do: GenServer.reply(local_client, reply)
 
@@ -148,15 +157,15 @@ defmodule Erps.Server do
   end
 
   @impl true
-  def handle_info(:accept, state) do
-    new_state = case :gen_tcp.accept(state.socket, 100) do
+  def handle_info(:accept, state = %{strategy: strategy}) do
+    new_state = case strategy.accept(state.socket, 100) do
       {:ok, socket} -> %{state | connections: [socket | state.connections]}
       _ -> state
     end
     Process.send_after(self(), :accept, 0)
     {:noreply, new_state}
   end
-  def handle_info({:tcp, socket, bin_data}, state = %{module: module, filter: filter}) do
+  def handle_info({:tcp, socket, bin_data}, state = %{module: module, filter: filter, strategy: strategy}) do
     case Packet.decode(bin_data, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
         {:noreply, state}
@@ -176,15 +185,18 @@ defmodule Erps.Server do
       e = {:error, _any} ->
         throw e
     end
-
   catch
     {:error, any} ->
       tcp_data = Packet.encode(%Packet{type: :error, payload: any})
-      :gen_tcp.send(socket, tcp_data)
+      strategy.send(socket, tcp_data)
       {:noreply, state}
   end
   def handle_info({:tcp_closed, port}, state) do
     {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
+  end
+  def handle_info({:tcp_reply, socket, tcp_data}, state = %{strategy: strategy}) do
+    strategy.send(socket, tcp_data)
+    {:noreply, state}
   end
   def handle_info(info_term, state = %{module: module}) do
     info_term

@@ -60,6 +60,12 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
     {:ok, server} = Server.start(self())
     {:ok, port} = Server.port(server)
     {:ok, client} = Client.start(self(), port)
+
+    on_exit(fn ->
+      if Process.alive?(server), do: Process.exit(server, :kill)
+      if Process.alive?(client), do: Process.exit(client, :kill)
+    end)
+
     {:ok, client: client, server: server}
   end
 
@@ -112,9 +118,12 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
 
     test "a remote client can stop the server with reply", %{client: client, server: server} do
       Process.monitor(server)
-      async = Task.async(fn -> Client.call(client, :foo) end)
+      spawn(fn ->
+        # note that this client call event will cause this spawned process to die
+        # because the client will exit due to tcp_closed
+        Client.call(client, :foo)
+      end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
-      assert :foo == Task.await(async)
       assert_receive {:DOWN, _, _, ^server, :normal}
     end
 
