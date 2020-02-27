@@ -137,6 +137,10 @@ defmodule Erps.Client do
 
   @impl true
   def handle_info({:tcp, socket, data}, state = %{socket: socket}) do
+
+    # NB: currently, we're trusting the RPS server to not send us malicious
+    # or unverified content.  This may change in the future.
+
     case Packet.decode(data) do
       {:error, error} ->
         Logger.error(error)
