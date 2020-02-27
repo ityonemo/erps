@@ -10,6 +10,9 @@ defmodule Erps.Client do
     @default_strategy Erps.TwoWayTLS
   end
 
+  # by default, attempt a reconnect every minute.
+  @default_reconnect 60_000
+
   alias Erps.Packet
 
   defmacro __using__(opts) do
@@ -36,6 +39,7 @@ defmodule Erps.Client do
     Module.register_attribute(__CALLER__.module, :encode_opts, persist: true)
     Module.register_attribute(__CALLER__.module, :hmac_key,    persist: true)
     Module.register_attribute(__CALLER__.module, :sign_with,   persist: true)
+    Module.register_attribute(__CALLER__.module, :reconnect,   persist: true)
 
     encode_opts = Keyword.take(options, [:compressed])
 
@@ -44,18 +48,19 @@ defmodule Erps.Client do
       @base_packet unquote(base_packet)
       @encode_opts unquote(encode_opts)
       @sign_with   unquote(options[:sign_with])
+      @reconnect   unquote(options[:reconnect])
     end
   end
 
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
-    :encode_opts, :hmac_key, :signature, strategy: @default_strategy]
+    :encode_opts, :hmac_key, :signature, :reconnect, strategy: @default_strategy]
 
   @type hmac_function :: ( -> String.t)
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
 
   @typep state :: %__MODULE__{
     module:      module,
-    socket:      :gen_tcp.socket,
+    socket:      nil | :gen_tcp.socket,
     server:      :inet.address,
     port:        :inet.port_number,
     data:        term,
@@ -63,6 +68,7 @@ defmodule Erps.Client do
     encode_opts: list,
     hmac_key:    nil | hmac_function,
     signature:   nil | signing_function,
+    reconnect:   non_neg_integer,
     strategy:    module
   }
 
@@ -108,15 +114,28 @@ defmodule Erps.Client do
 
     strategy = opts[:strategy] || @default_strategy
 
+    reconnect = case module.__info__(:attributes)[:reconnect] do
+      [nil] -> opts[:reconnect] || @default_reconnect
+      [mod_reconnect] -> opts[:reconnect] || mod_reconnect
+    end
+
+    base_options = [
+      module: module,
+      base_packet: struct(base_packet, hmac_key: hmac_key),
+      encode_opts: encode_opts,
+      reconnect: reconnect] ++ opts
+
     case strategy.connect(server, port, [:binary, active: true]) do
       {:ok, socket} ->
         start
         |> module.init()
-        |> process_init([
-          module: module,
-          socket: socket,
-          base_packet: struct(base_packet, hmac_key: hmac_key),
-          encode_opts: encode_opts] ++ opts)
+        |> process_init(base_options ++ [socket: socket])
+      {:error, :econnrefused} ->
+        # send a reconnect message back to the process.
+        Process.send_after(self(), :"$reconnect", reconnect)
+        start
+        |> module.init()
+        |> process_init(base_options ++ [socket: nil])
     end
   end
 
@@ -124,6 +143,7 @@ defmodule Erps.Client do
   def cast(srv, val), do: GenServer.cast(srv, val)
 
   @impl true
+  def handle_call(_, _, state = %{socket: nil}), do: {:noreply, state}
   def handle_call(val, from, state = %{strategy: strategy}) do
     tcp_data = state.base_packet
     |> struct(type: :call, payload: {from, val})
@@ -134,6 +154,7 @@ defmodule Erps.Client do
   end
 
   @impl true
+  def handle_cast(_, state = %{socket: nil}), do: {:noreply, state}
   def handle_cast(val, state = %{strategy: strategy}) do
     #instrument data into the packet and convert to binary.
     tcp_data = state.base_packet
@@ -169,6 +190,15 @@ defmodule Erps.Client do
   end
   def handle_info({:tcp_closed, socket}, state = %{socket: socket}) do
     {:stop, :tcp_closed, state}
+  end
+  def handle_info(:"$reconnect", state = %{socket: nil, strategy: strategy}) do
+    case strategy.connect(state.server, state.port, [:binary, active: true]) do
+      {:ok, socket} ->
+        {:noreply, %{state | socket: socket}}
+      {:error, :econnrefused} ->
+        Process.send_after(self(), :"$reconnect", state.reconnect)
+        {:noreply, state}
+    end
   end
   def handle_info(info, state = %{module: module}) do
     info
