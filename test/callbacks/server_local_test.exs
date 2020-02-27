@@ -111,14 +111,17 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     end
 
     test "a local client can stop the server with reply", %{server: server} do
+      Process.monitor(server)
       async = Task.async(fn -> GenServer.call(server, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
       assert :foo == Task.await(async)
       Process.sleep(20)
-      refute Process.alive?(server)
+
+      assert_receive {:DOWN, _, _, ^server, :normal}
     end
 
     test "a local client can stop the server without reply", %{server: server} do
+      Process.monitor(server)
       async = Task.async(fn ->
         try do
           GenServer.call(server, :foo)
@@ -128,7 +131,7 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
       end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end
       assert :died == Task.await(async)
-      refute Process.alive?(server)
+      assert_receive {:DOWN, _, _, ^server, :normal}
     end
   end
 
@@ -149,10 +152,11 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     end
 
     test "a local client can cast a stop", %{server: server} do
+      Process.monitor(server)
       assert :ok = GenServer.cast(server, :foo)
       receive do {:casted, :foo} -> send(server, {:stop, :normal, self()}) end
       Process.sleep(20)
-      refute Process.alive?(server)
+      assert_receive {:DOWN, _, _, ^server, :normal}
     end
   end
 
@@ -174,10 +178,11 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     end
 
     test "a local client can send a stop", %{server: server} do
+      Process.monitor(server)
       send(server, :foo)
       receive do {:sent, :foo} -> send(server, {:stop, :normal, self()}) end
       Process.sleep(20)
-      refute Process.alive?(server)
+      assert_receive {:DOWN, _, _, ^server, :normal}
     end
   end
 end

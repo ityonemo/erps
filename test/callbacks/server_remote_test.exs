@@ -111,13 +111,16 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
     end
 
     test "a remote client can stop the server with reply", %{client: client, server: server} do
+      Process.monitor(server)
       async = Task.async(fn -> Client.call(client, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
       assert :foo == Task.await(async)
-      refute Process.alive?(server)
+      assert_receive {:DOWN, _, _, ^server, :normal}
     end
 
     test "a remote client can stop the server without reply", %{client: client, server: server} do
+      Process.monitor(client)
+      Process.monitor(server)
       async = Task.async(fn ->
         try do
           Client.call(client, :foo)
@@ -127,8 +130,8 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
       end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end
       assert :died == Task.await(async)
-      refute Process.alive?(server)
-      refute Process.alive?(client)
+      assert_receive {:DOWN, _, _, ^server, :normal}
+      assert_receive {:DOWN, _, _, ^client, :tcp_closed}
     end
   end
 
@@ -149,10 +152,11 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
     end
 
     test "a remote client can cast a stop", %{client: client, server: server} do
+      Process.monitor(server)
       assert :ok = Client.cast(client, :foo)
       receive do {:casted, :foo} -> send(server, {:stop, :normal, self()}) end
       Process.sleep(20)
-      refute Process.alive?(server)
+      assert_receive {:DOWN, _, _, ^server, :normal}
     end
   end
 end

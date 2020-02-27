@@ -65,10 +65,11 @@ defmodule ErpsTest.Callbacks.ClientTest do
 
     test "the client can process a {:stop, reason, state}", %{server: svr} do
       {:ok, client} = Client.start_link(svr)
+      Process.monitor(client)
       Process.sleep(20)
       Server.push(svr, {:stop, :normal, self()})
-      Process.sleep(20)
-      refute Process.alive?(client)
+
+      assert_receive {:DOWN, _, _, ^client, :normal}
       assert_receive :normal
     end
   end
@@ -118,10 +119,11 @@ defmodule ErpsTest.Callbacks.ClientTest do
 
     test "the client can process a stop message", %{server: svr} do
       {:ok, client} = Client.start(svr)
+      Process.monitor(client)
       Process.sleep(20)
       send(client, {:stop, :normal, self()})
       assert_receive :normal
-      refute Process.alive?(client)
+      assert_receive {:DOWN, _, _, ^client, :normal}
     end
   end
 
