@@ -13,6 +13,13 @@ defmodule Erps.Client do
       @zero_version
     end
 
+    if opts[:identifier] && :erlang.size(opts[:identifier]) >= 12 do
+      raise CompileError,
+        file: __CALLER__.file,
+        line: __CALLER__.line,
+        description: "identifier size too large"
+    end
+
     options = Keyword.merge(opts, version: version)
 
     base_packet = Packet

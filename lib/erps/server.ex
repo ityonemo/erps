@@ -7,6 +7,13 @@ defmodule Erps.Server do
     Module.register_attribute(__CALLER__.module, :decode_opts, persist: true)
     Module.register_attribute(__CALLER__.module, :verification, persist: true)
 
+    if opts[:identifier] && :erlang.size(opts[:identifier]) >= 12 do
+      raise CompileError,
+        file: __CALLER__.file,
+        line: __CALLER__.line,
+        description: "identifier size too large"
+    end
+
     quote do
       @behaviour Erps.Server
 
