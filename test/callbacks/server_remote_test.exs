@@ -116,14 +116,12 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
       assert :continued = Task.await(ping_task)
     end
 
+    @tag :one
     test "a remote client can stop the server with reply", %{client: client, server: server} do
       Process.monitor(server)
-      spawn(fn ->
-        # note that this client call event will cause this spawned process to die
-        # because the client will exit due to tcp_closed
-        Client.call(client, :foo)
-      end)
+      async = Task.async(fn -> Client.call(client, :foo) end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
+      assert :foo == Task.await(async)
       assert_receive {:DOWN, _, _, ^server, :normal}
     end
 
