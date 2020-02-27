@@ -127,11 +127,16 @@ defmodule Erps.Server do
 
   def call(srv, content, timeout \\ 5000), do: GenServer.call(srv, content, timeout)
 
-  def reply({:remote, socket, from}, reply) do
-    tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
-    send(self(), {:tcp_reply, socket, tcp_data})
+  def reply(from, reply) do
+    send(self(), {:"$reply", from, reply})
+    :ok
   end
-  def reply(local_client, reply), do: GenServer.reply(local_client, reply)
+
+  defp do_reply({:remote, socket, from}, reply, %{strategy: strategy}) do
+    tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
+    strategy.send(socket, tcp_data)
+  end
+  defp do_reply(local_client, reply, _state), do: GenServer.reply(local_client, reply)
 
   #############################################################################
   # router
@@ -194,8 +199,8 @@ defmodule Erps.Server do
   def handle_info({:tcp_closed, port}, state) do
     {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
   end
-  def handle_info({:tcp_reply, socket, tcp_data}, state = %{strategy: strategy}) do
-    strategy.send(socket, tcp_data)
+  def handle_info({:"$reply", from, reply}, state) do
+    do_reply(from, reply, state)
     {:noreply, state}
   end
   def handle_info(info_term, state = %{module: module}) do
@@ -238,13 +243,13 @@ defmodule Erps.Server do
   defp process_call(call_result, from, state) do
     case call_result do
       {:reply, reply, data} ->
-        reply(from, reply)
+        do_reply(from, reply, state)
         {:noreply, %{state | data: data}}
       {:reply, reply, data, timeout_or_continue} ->
-        reply(from, reply)
+        do_reply(from, reply, state)
         {:noreply, %{state | data: data}, timeout_or_continue}
       {:stop, reason, reply, data} ->
-        reply(from, reply)
+        do_reply(from, reply, state)
         {:stop, reason, %{state | data: data}}
       any ->
         process_noreply(any, state)
