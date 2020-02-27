@@ -58,12 +58,13 @@ defmodule ErpsTest.OtpTest do
       {:ok, server} = Server.start(:ok)
       {:ok, port} = Erps.Server.port(server)
       {:ok, client} = Client.start(self(), port: port)
+      # watch the client
+      Process.monitor(client)
 
       Process.sleep(20)
       Process.exit(server, :kill)
-      Process.sleep(50)
 
-      refute Process.alive?(client)
+      assert_receive {:DOWN, _, _, ^client, :tcp_closed}, 500
     end
   end
 
@@ -79,6 +80,7 @@ defmodule ErpsTest.OtpTest do
 
       # retrieve the client PID
       [{_, client, _, _}] = Supervisor.which_children(client_sup)
+      Process.monitor(client)
 
       # make sure we can perform a connection.
       Server.push(:server1, :ping)
@@ -86,9 +88,12 @@ defmodule ErpsTest.OtpTest do
 
       # now kill the client.
       Process.exit(client, :kill)
+
+      assert_receive {:DOWN, _, _, ^client, :killed}, 500
+
+      # let it reconnect
       Process.sleep(20)
 
-      refute Process.alive?(client)
       # but we can still use the connection
       Server.push(:server1, :ping)
       assert_receive :ping
@@ -114,6 +119,8 @@ defmodule ErpsTest.OtpTest do
       # retrieve the server and client PIDs
       [{_, server, _, _}] = Supervisor.which_children(server_sup)
       [{_, client, _, _}] = Supervisor.which_children(client_sup)
+      Process.monitor(server)
+      Process.monitor(client)
 
       # make sure we can perform a connection.
       Server.push(:server2, :ping)
@@ -121,11 +128,10 @@ defmodule ErpsTest.OtpTest do
 
       # now kill the server.
       Process.exit(server, :kill)
-      Process.sleep(20)
 
-      # both client and server should die in tandem.
-      refute Process.alive?(server)
-      refute Process.alive?(client)
+      # check that our server has died.
+      assert_receive {:DOWN, _, _, ^server, :killed}, 500
+      assert_receive {:DOWN, _, _, ^client, :tcp_closed}, 100
 
       Process.sleep(200)
 

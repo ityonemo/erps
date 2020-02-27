@@ -27,7 +27,7 @@ defmodule Erps.Client do
     encode_opts = Keyword.take(options, [:compressed])
 
     quote do
-      @behaviour Erps.Client
+      @behaviour   Erps.Client
       @base_packet unquote(base_packet)
       @encode_opts unquote(encode_opts)
       @sign_with   unquote(options[:sign_with])

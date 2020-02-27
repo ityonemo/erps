@@ -1,5 +1,10 @@
 defmodule Erps.Server do
-  defmacro __using__(_opts) do
+  defmacro __using__(opts) do
+
+    decode_opts = Keyword.take(opts, [:identifier, :versions, :safe])
+
+    Module.register_attribute(__CALLER__.module, :decode_opts, persist: true)
+
     quote do
       @behaviour Erps.Server
 
@@ -8,10 +13,12 @@ defmodule Erps.Server do
       def push(srv, push), do: Erps.Server.push(srv, push)
       def connections(srv), do: Erps.Server.connections(srv)
       def disconnect(srv, port), do: Erps.Server.disconnect(srv, port)
+
+      @decode_opts unquote(decode_opts)
     end
   end
 
-  defstruct [:module, :data, :port, :socket,
+  defstruct [:module, :data, :port, :socket, :decode_opts,
     connections: []]
 
   @behaviour GenServer
@@ -31,13 +38,17 @@ defmodule Erps.Server do
   @impl true
   def init({module, param, inner_opts}) do
     port = inner_opts[:port] || 0
+
+    decode_opts = module.__info__(:attributes)[:decode_opts]
+
     case :gen_tcp.listen(port, [:binary, active: true, reuseaddr: true]) do
       {:ok, socket} ->
         # kick off the accept loop.
         Process.send_after(self(), :accept, 0)
         param
         |> module.init
-        |> process_init(module: module, port: port, socket: socket)
+        |> process_init(module: module, port: port,
+          socket: socket, decode_opts: decode_opts)
       {:error, what} ->
         {:stop, what}
     end
@@ -121,7 +132,7 @@ defmodule Erps.Server do
     {:noreply, new_state}
   end
   def handle_info({:tcp, socket, bin_data}, state = %{module: module}) do
-    case Packet.decode(bin_data) do
+    case Packet.decode(bin_data, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
         {:noreply, state}
       {:ok, %Packet{type: :call, payload: {from, data}}} ->
@@ -133,6 +144,10 @@ defmodule Erps.Server do
         data
         |> module.handle_cast(state.data)
         |> process_noreply(state)
+      {:error, any} ->
+        tcp_data = Packet.encode(%Packet{type: :error, payload: any})
+        :gen_tcp.send(socket, tcp_data)
+        {:noreply, state}
     end
   end
   def handle_info({:tcp_closed, port}, state) do
