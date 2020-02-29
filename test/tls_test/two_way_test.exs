@@ -1,4 +1,4 @@
-defmodule ErpsTest.TwoWayTlsTest do
+defmodule ErpsTest.TlsTest.TwoWayTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
