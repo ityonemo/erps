@@ -42,7 +42,7 @@ defmodule ErpsTest.Parameters.ClientTest do
     test "the cast packet is branded with its version", %{port: port} do
       {:ok, client} = ClientVersion.start_link(port)
 
-      Erps.Client.cast(client, :foo)
+      GenServer.cast(client, :foo)
 
       assert_receive {:tcp, _, data}
       {:ok, packet} = Packet.decode(data)
@@ -53,7 +53,7 @@ defmodule ErpsTest.Parameters.ClientTest do
     test "the call packet is branded with its version", %{port: port} do
       {:ok, client} = ClientVersion.start_link(port)
 
-      spawn_link(fn -> Erps.Client.call(client, :foo) end)
+      spawn_link(fn -> GenServer.call(client, :foo) end)
 
       assert_receive {:tcp, _, data}
       {:ok, packet} = Packet.decode(data)
@@ -80,7 +80,7 @@ defmodule ErpsTest.Parameters.ClientTest do
     test "the cast packet is branded with its identifier", %{port: port} do
       {:ok, client} = ClientIdentifier.start_link(port)
 
-      Erps.Client.cast(client, :foo)
+      GenServer.cast(client, :foo)
 
       assert_receive {:tcp, _, data}
       {:ok, packet} = Packet.decode(data)
@@ -91,7 +91,7 @@ defmodule ErpsTest.Parameters.ClientTest do
     test "the call packet is branded with its version", %{port: port} do
       {:ok, client} = ClientIdentifier.start_link(port)
 
-      spawn_link(fn -> Erps.Client.call(client, :foo) end)
+      spawn_link(fn -> GenServer.call(client, :foo) end)
 
       assert_receive {:tcp, _, data}
       {:ok, packet} = Packet.decode(data)
@@ -149,11 +149,11 @@ defmodule ErpsTest.Parameters.ClientTest do
   describe "when the client is instrumented with compression" do
     test "the cast packet is compressed", %{port: port} do
       {:ok, client1} = ClientVersion.start_link(port)
-      Erps.Client.cast(client1, @compressible_payload)
+      GenServer.cast(client1, @compressible_payload)
       assert_receive {:tcp, _, data_uncompressed}
 
       {:ok, client2} = ClientCompressionDefault.start_link(port)
-      Erps.Client.cast(client2, @compressible_payload)
+      GenServer.cast(client2, @compressible_payload)
       assert_receive {:tcp, _, data_compressed}
 
       assert :erlang.size(data_uncompressed) > :erlang.size(data_compressed)
@@ -161,11 +161,11 @@ defmodule ErpsTest.Parameters.ClientTest do
 
     test "the cast packet can have varying levels of compression", %{port: port} do
       {:ok, client1} = ClientCompressionLow.start_link(port)
-      Erps.Client.cast(client1, @compressible_payload)
+      GenServer.cast(client1, @compressible_payload)
       assert_receive {:tcp, _, compressed_low}
 
       {:ok, client2} = ClientCompressionHigh.start_link(port)
-      Erps.Client.cast(client2, @compressible_payload)
+      GenServer.cast(client2, @compressible_payload)
       assert_receive {:tcp, _, compressed_high}
 
       assert :erlang.size(compressed_low) > :erlang.size(compressed_high)
@@ -294,7 +294,7 @@ defmodule ErpsTest.Parameters.ClientTest do
   describe "when the client is instrumented with signature" do
     test "it looks for local @hmac_key value", %{port: port} do
       {:ok, client1} = ClientSignatureLocal.start_link(port)
-      Erps.Client.cast(client1, :foo)
+      GenServer.cast(client1, :foo)
       assert_receive {:tcp, _, signed_data}
 
       assert {:ok, _packet} =
@@ -304,7 +304,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
     test "it looks for local @hmac_key zero arity fn", %{port: port} do
       {:ok, client1} = ClientSignatureLocalHmacFn.start_link(port)
-      Erps.Client.cast(client1, :foo)
+      GenServer.cast(client1, :foo)
       assert_receive {:tcp, _, signed_data}
 
       assert {:ok, _packet} =
@@ -314,7 +314,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
     test "it looks for remote @hmac_key zero arity fn", %{port: port} do
       {:ok, client1} = ClientSignatureLocalHmacRemoteFn.start_link(port)
-      Erps.Client.cast(client1, :foo)
+      GenServer.cast(client1, :foo)
       assert_receive {:tcp, _, signed_data}
 
       assert {:ok, _packet} =
@@ -324,7 +324,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
     test "it can also use a remote signature function", %{port: port} do
       {:ok, client1} = ClientSignatureRemote.start_link(port)
-      Erps.Client.cast(client1, :foo)
+      GenServer.cast(client1, :foo)
       assert_receive {:tcp, _, signed_data}
 
       assert {:ok, _packet} =

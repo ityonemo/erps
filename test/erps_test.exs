@@ -12,9 +12,9 @@ defmodule ErpsTest do
 
     def init(val), do: {:ok, val}
 
-    def ping(srv), do: Erps.Client.call(srv, :ping)
+    def ping(srv), do: GenServer.call(srv, :ping)
 
-    def cast(srv), do: Erps.Client.cast(srv, :cast)
+    def cast(srv), do: GenServer.cast(srv, :cast)
 
   end
 
@@ -27,7 +27,7 @@ defmodule ErpsTest do
 
     def init(state), do: {:ok, state}
 
-    def state(srv), do: Erps.Server.call(srv, :state)
+    def state(srv), do: GenServer.call(srv, :state)
 
     def handle_call(:ping, _from, state) do
       {:reply, :pong, state}

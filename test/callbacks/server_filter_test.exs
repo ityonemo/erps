@@ -76,9 +76,9 @@ defmodule ErpsTest.Callbacks.ServerFilterTest do
     Process.sleep(20)
 
     DoublerClient.sendme(client, 47)
-    assert_receive 47
+    assert_receive 47, 500
     DoublerClient.sendme(client, 42)
-    assert_receive 42
+    assert_receive 42, 500
   end
 
   test "casts are filtered on a different channel and can fail" do
@@ -89,7 +89,7 @@ defmodule ErpsTest.Callbacks.ServerFilterTest do
     Process.sleep(20)
 
     DoublerClient.sendme(client, 0)
-    refute_receive 0
+    refute_receive 0, 500
   end
 
 end

@@ -24,7 +24,8 @@ defmodule Erps.MixProject do
     {:credo, "~> 1.2", only: [:test, :dev], runtime: false},
     {:dialyxir, "~> 0.5.1", only: :dev, runtime: false},
     {:ex_doc, "~> 0.20.2", only: :dev, runtime: false},
-    {:excoveralls, "~> 0.11.1", only: :test}
+    {:excoveralls, "~> 0.11.1", only: :test},
+    {:x509, "~> 0.8.0", only: [:dev, :test]}
   ]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]

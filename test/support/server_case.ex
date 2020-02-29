@@ -29,8 +29,8 @@ defmodule ErpsTest.ServerCase do
           {:noreply, test_pid}
         end
 
-        def call(srv, call), do: Erps.Client.call(srv, call)
-        def cast(srv, cast), do: Erps.Client.cast(srv, cast)
+        def call(srv, call), do: GenServer.call(srv, call)
+        def cast(srv, cast), do: GenServer.cast(srv, cast)
       end
     end
   end

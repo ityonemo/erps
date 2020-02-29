@@ -35,20 +35,22 @@ defmodule Erps.Server do
     end
   end
 
-  defstruct [:module, :data, :port, :socket, :decode_opts, :filter,
-    strategy: @default_strategy, connections: []]
+  defstruct [:module, :data, :port, :socket, :decode_opts, :filter, :packet_type,
+    ssl_opts: [],
+    strategy: @default_strategy,
+    connections: []]
 
   @behaviour GenServer
 
   alias Erps.Packet
 
   def start(module, param, opts \\ []) do
-    inner_opts = Keyword.take(opts, [:port])
+    inner_opts = Keyword.take(opts, [:port, :strategy, :ssl_opts])
     GenServer.start(__MODULE__, {module, param, inner_opts}, opts)
   end
 
   def start_link(module, param, opts \\ []) do
-    inner_opts = Keyword.take(opts, [:port])
+    inner_opts = Keyword.take(opts, [:port, :strategy, :ssl_opts])
     GenServer.start_link(__MODULE__, {module, param, inner_opts}, opts)
   end
 
@@ -77,12 +79,15 @@ defmodule Erps.Server do
 
     case strategy.listen(port, [:binary, active: true, reuseaddr: true]) do
       {:ok, socket} ->
+        server_opts = Keyword.merge(inner_opts,
+          module: module, port: port, socket: socket, decode_opts: decode_opts,
+          filter: filter, strategy: strategy, packet_type: strategy.packet_type())
+
         # kick off the accept loop.
         Process.send_after(self(), :accept, 0)
         param
         |> module.init
-        |> process_init(module: module, port: port,
-          socket: socket, decode_opts: decode_opts, filter: filter, strategy: strategy)
+        |> process_init(server_opts)
       {:error, what} ->
         {:stop, what}
     end
@@ -124,9 +129,6 @@ defmodule Erps.Server do
 
   #############################################################################
   ## GenServer wrappers
-
-  def call(srv, content, timeout \\ 5000), do: GenServer.call(srv, content, timeout)
-
   def reply(from, reply) do
     send(self(), {:"$reply", from, reply})
     :ok
@@ -163,14 +165,17 @@ defmodule Erps.Server do
 
   @impl true
   def handle_info(:accept, state = %{strategy: strategy}) do
-    new_state = case strategy.accept(state.socket, 100) do
-      {:ok, socket} -> %{state | connections: [socket | state.connections]}
-      _ -> state
-    end
     Process.send_after(self(), :accept, 0)
-    {:noreply, new_state}
+    with {:ok, socket} <- strategy.accept(state.socket, 100),
+         {:ok, upgrade} <- strategy.handshake(socket, state.ssl_opts) do
+      {:noreply, %{state | connections: [upgrade | state.connections]}}
+    else
+      _any -> {:noreply, state}
+    end
   end
-  def handle_info({:tcp, socket, bin_data}, state = %{module: module, filter: filter, strategy: strategy}) do
+  def handle_info({ptype, socket, bin_data},
+      state = %{module: module, filter: filter, strategy: strategy, packet_type: ptype}) do
+
     case Packet.decode(bin_data, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
         {:noreply, state}
@@ -182,6 +187,7 @@ defmodule Erps.Server do
         |> module.handle_call(remote_from, state.data)
         |> process_call(remote_from, state)
       {:ok, %Packet{type: :cast, payload: data}} ->
+
         unless filter.(data, :cast), do: throw {:error, "filtered"}
 
         data

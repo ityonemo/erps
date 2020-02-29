@@ -53,7 +53,8 @@ defmodule Erps.Client do
   end
 
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
-    :encode_opts, :hmac_key, :signature, :reconnect, strategy: @default_strategy]
+    :encode_opts, :hmac_key, :signature, :reconnect, :packet_type,
+    strategy: @default_strategy]
 
   @type hmac_function :: ( -> String.t)
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
@@ -69,18 +70,19 @@ defmodule Erps.Client do
     hmac_key:    nil | hmac_function,
     signature:   nil | signing_function,
     reconnect:   non_neg_integer,
+    packet_type: :tcp | :ssl,
     strategy:    module
   }
 
   require Logger
 
   def start(module, state, opts) do
-    inner_opts = Keyword.take(opts, [:server, :port])
+    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts])
     GenServer.start(__MODULE__, {module, state, inner_opts}, opts)
   end
 
   def start_link(module, state, opts) do
-    inner_opts = Keyword.take(opts, [:server, :port])
+    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts])
     GenServer.start_link(__MODULE__, {module, state, inner_opts}, opts)
   end
 
@@ -119,17 +121,20 @@ defmodule Erps.Client do
       [mod_reconnect] -> opts[:reconnect] || mod_reconnect
     end
 
-    base_options = [
+    base_options = Keyword.merge(opts, [
       module: module,
       base_packet: struct(base_packet, hmac_key: hmac_key),
       encode_opts: encode_opts,
-      reconnect: reconnect] ++ opts
+      reconnect: reconnect,
+      strategy: strategy,
+      packet_type: strategy.packet_type()])
 
-    case strategy.connect(server, port, [:binary, active: true]) do
-      {:ok, socket} ->
-        start
-        |> module.init()
-        |> process_init(base_options ++ [socket: socket])
+    with {:ok, socket} <- strategy.connect(server, port, [:binary, active: true]),
+         upgraded <- strategy.upgrade!(socket, opts[:ssl_opts]) do
+      start
+      |> module.init()
+      |> process_init(base_options ++ [socket: upgraded])
+    else
       {:error, :econnrefused} ->
         # send a reconnect message back to the process.
         Process.send_after(self(), :"$reconnect", reconnect)
@@ -138,9 +143,6 @@ defmodule Erps.Client do
         |> process_init(base_options ++ [socket: nil])
     end
   end
-
-  def call(srv, val), do: GenServer.call(srv, val)
-  def cast(srv, val), do: GenServer.cast(srv, val)
 
   @impl true
   def handle_call(_, _, state = %{socket: nil}), do: {:noreply, state}
@@ -166,7 +168,7 @@ defmodule Erps.Client do
   end
 
   @impl true
-  def handle_info({:tcp, socket, data}, state = %{socket: socket}) do
+  def handle_info({ptype, socket, data}, state = %{socket: socket, packet_type: ptype})do
 
     # NB: currently, we're trusting the RPS server to not send us malicious
     # or unverified content.  This may change in the future.

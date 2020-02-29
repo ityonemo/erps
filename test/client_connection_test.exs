@@ -35,7 +35,6 @@ defmodule ErpsTest.ClientConnectionTest do
       end)
 
       refute_receive {:DOWN, _, _, ^client, _,}, 500
-
       Process.exit(client, :kill)
     end
 
@@ -47,7 +46,6 @@ defmodule ErpsTest.ClientConnectionTest do
       GenServer.cast(client, :foo)
 
       refute_receive {:DOWN, _, _, ^client, _,}, 500
-
       Process.exit(client, :kill)
     end
   end

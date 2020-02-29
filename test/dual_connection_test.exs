@@ -13,7 +13,7 @@ defmodule ErpsTest.DualConnectionTest do
 
     def init(state), do: {:ok, state}
 
-    def ping(srv), do: Erps.Client.call(srv, :ping)
+    def ping(srv), do: GenServer.call(srv, :ping)
   end
 
   defmodule TestServer do

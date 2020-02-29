@@ -75,7 +75,7 @@ defmodule Erps.Packet do
 
     cond do
       # verify that we are doing the same rpc.
-      srv_identifier && (srv_identifier != String.trim(pkt_identifier, <<0>>)) ->
+      srv_identifier && (srv_identifier != trim(pkt_identifier)) ->
         {:error, "wrong rpc"}
       # verify that we are using an acceptable version
       version_req && (not Version.match?("#{v1}.#{v2}.#{v3}", version_req)) ->
@@ -123,7 +123,7 @@ defmodule Erps.Packet do
     {:ok, %__MODULE__{
       type:         @code_to_type[code],
       version:      %Version{major: v1, minor: v2, patch: v3, pre: []},
-      identifier:   String.trim(identifier, <<0>>),
+      identifier:   trim(identifier),
       hmac_key:     hmac_key,
       signature:    signature,
       payload_size: payload_size,
@@ -174,6 +174,14 @@ defmodule Erps.Packet do
   defp pad(string) do
     leftover = 12 - :erlang.size(string)
     string <> <<0::(leftover * 8)>>
+  end
+
+  defp trim(binary) do
+    prefix_size = :erlang.size(binary) - 1
+    case binary do
+        <<prefix::binary-size(prefix_size), 0>> -> trim(prefix);
+        _ -> binary
+    end
   end
 
 end
