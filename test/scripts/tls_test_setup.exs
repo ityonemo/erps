@@ -32,9 +32,7 @@ ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-host", ca, ca_key, host: "1.1.
 # make a chain of content that comes from the wrong CA root
 {wrong_ca, wrong_ca_key} = ErpsTest.TlsFileGen.generate_root(tempdir, "wrong-rootCA")
 # generate server authentications
-ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-root-server", wrong_ca, wrong_ca_key)
-# generate client authentications
-ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-root-client", wrong_ca, wrong_ca_key)
+ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-root", wrong_ca, wrong_ca_key)
 
 defmodule ErpsTest.TlsFiles do
   @path tempdir

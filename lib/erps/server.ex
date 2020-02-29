@@ -55,8 +55,8 @@ defmodule Erps.Server do
   end
 
   @impl true
-  def init({module, param, inner_opts}) do
-    port = inner_opts[:port] || 0
+  def init({module, param, opts}) do
+    port = opts[:port] || 0
 
     verification_opts = case module.__info__(:attributes)[:verification] do
       [nil] -> []
@@ -75,11 +75,12 @@ defmodule Erps.Server do
       &default_filter/2
     end
 
-    strategy = inner_opts[:strategy] || @default_strategy
+    strategy = opts[:strategy] || @default_strategy
+    listen_opts = [:binary, active: false, reuseaddr: true, ssl_opts: opts[:ssl_opts]]
 
-    case strategy.listen(port, [:binary, active: false, reuseaddr: true]) do
+    case strategy.listen(port, listen_opts) do
       {:ok, socket} ->
-        server_opts = Keyword.merge(inner_opts,
+        server_opts = Keyword.merge(opts,
           module: module, port: port, socket: socket, decode_opts: decode_opts,
           filter: filter, strategy: strategy, packet_type: strategy.packet_type())
 

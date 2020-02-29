@@ -1,4 +1,4 @@
-defmodule ErpsTest.TlsTest do
+defmodule ErpsTest.TwoWayTlsTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
@@ -24,6 +24,9 @@ defmodule ErpsTest.TlsTest do
   defmodule Server do
     use Erps.Server
 
+    def start(test_pid, opts) do
+      Erps.Server.start(__MODULE__, test_pid, opts)
+    end
     def start_link(test_pid, opts) do
       Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
@@ -79,7 +82,6 @@ defmodule ErpsTest.TlsTest do
       verify.()
     end
 
-    @tag :one
     test "client can't connect over unencrypted channel", %{port: port, verify: verify} do
       {:ok, bad_client} = Client.start(port: port, strategy: Erps.TCP)
       Process.monitor(bad_client)
@@ -110,6 +112,10 @@ defmodule ErpsTest.TlsTest do
       verify.()
     end
 
+    test "the client must have ssl options activated", %{port: port} do
+      assert {:error, _} = Client.start(port: port, strategy: Erps.TLS)
+    end
+
     test "client can't connect with the wrong root CA", %{port: port, verify: verify} do
       log = capture_log(fn ->
         assert {:error, _} = Client.start(
@@ -117,14 +123,38 @@ defmodule ErpsTest.TlsTest do
           strategy: Erps.TLS,
           ssl_opts: [
             cacertfile: path("wrong-rootCA.pem"),
-            certfile:   path("wrong-root-client.cert"),
-            keyfile:    path("wrong-root-client.key"),
+            certfile:   path("wrong-root.cert"),
+            keyfile:    path("wrong-root.key"),
             customize_hostname_check: Erps.TLS.single_ip_check(@localhost)
           ])
         Process.sleep(100)
       end)
 
       [_, client, server] = String.split(log, "[info]")
+      assert client =~ "Unknown CA"
+      assert client =~ ":client:"
+      assert server =~ "Unknown CA"
+      assert server =~ ":server:"
+
+      # make sure good client is undisrupted
+      verify.()
+    end
+
+    test "client can't connect with valid cert rooted to wrong root CA", %{port: port, verify: verify} do
+      log = capture_log(fn ->
+        assert {:error, _} = Client.start(
+          port: port,
+          strategy: Erps.TLS,
+          ssl_opts: [
+            cacertfile: path("rootCA.pem"),
+            certfile:   path("wrong-root.cert"),
+            keyfile:    path("wrong-root.key"),
+            customize_hostname_check: Erps.TLS.single_ip_check(@localhost)
+          ])
+        Process.sleep(100)
+      end)
+
+      [_, server, client] = String.split(log, "[info]")
       assert client =~ "Unknown CA"
       assert client =~ ":client:"
       assert server =~ "Unknown CA"
@@ -178,4 +208,121 @@ defmodule ErpsTest.TlsTest do
       verify.()
     end
   end
+
+  describe "for two way tls with the server certificates" do
+    test "the server must have ssl options provided" do
+      assert {:error, _} = Server.start(self(), strategy: Erps.TLS)
+    end
+
+    test "the server must have a valid cacert file" do
+      assert {:error, _} = Server.start(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          certfile:   path("server.cert"),
+          keyfile:    path("server.key")
+        ])
+
+      assert {:error, _} = Server.start(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          cacertfile: path("not_a_file"),
+          certfile:   path("server.cert"),
+          keyfile:    path("server.key")
+        ])
+    end
+
+    test "the server must have a valid cert file" do
+      assert {:error, _} = Server.start(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          cacertfile: path("rootCA.pem"),
+          keyfile:    path("server.key")
+        ])
+
+      assert {:error, _} = Server.start(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          cacertfile: path("rootCA.pem"),
+          certfile:   path("not_a_file"),
+          keyfile:    path("server.key")
+        ])
+    end
+
+    test "the server must have a valid key file" do
+      assert {:error, _} = Server.start(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          cacertfile: path("rootCA.pem"),
+          certfile:   path("server.cert")
+        ])
+
+      assert {:error, _} = Server.start(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          cacertfile: path("rootCA.pem"),
+          certfile:   path("server.cert"),
+          keyfile:    path("not_a_file")
+        ])
+    end
+
+    # note that fully disjoint CAs is already tested in the previous section.
+    test "client rejects if the server is rooted to the wrong root CA" do
+      {:ok, server} = Server.start_link(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          cacertfile: path("rootCA.pem"),
+          certfile:   path("wrong-root.cert"),
+          keyfile:    path("wrong-root.key")
+        ])
+      {:ok, port} = Server.port(server)
+
+      log = capture_log(fn ->
+        assert {:error, _} = Client.start(
+          port: port,
+          strategy: Erps.TLS,
+          ssl_opts: [
+            cacertfile: path("rootCA.pem"),
+            certfile:   path("client.cert"),
+            keyfile:    path("client.key"),
+            customize_hostname_check: Erps.TLS.single_ip_check(@localhost),
+            reuse_sessions: false])
+        Process.sleep(100)
+      end)
+      [_, client, server] = String.split(log, "[info]")
+      assert client =~ "Unknown CA"
+      assert client =~ ":client:"
+      assert server =~ "Unknown CA"
+      assert server =~ ":server:"
+    end
+
+    test "client rejects if the server has the wrong key" do
+      {:ok, server} = Server.start_link(self(),
+        strategy: Erps.TLS,
+        ssl_opts: [
+          cacertfile: path("rootCA.pem"),
+          certfile:   path("server.cert"),
+          keyfile:    path("wrong-key.key")
+        ])
+      {:ok, port} = Server.port(server)
+
+      log = capture_log(fn ->
+        assert {:error, _} = Client.start(
+          port: port,
+          strategy: Erps.TLS,
+          ssl_opts: [
+            cacertfile: path("rootCA.pem"),
+            certfile:   path("client.cert"),
+            keyfile:    path("client.key"),
+            customize_hostname_check: Erps.TLS.single_ip_check(@localhost),
+            reuse_sessions: false])
+        Process.sleep(100)
+      end)
+      [_, client, server] = String.split(log, "[info]")
+      assert client =~ "Decrypt Error"
+      assert client =~ ":client:"
+      assert server =~ "Decrypt Error"
+      assert server =~ ":server:"
+    end
+  end
+
 end
