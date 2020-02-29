@@ -130,6 +130,7 @@ defmodule Erps.Server do
 
   #############################################################################
   ## GenServer wrappers
+
   def reply(from, reply) do
     send(self(), {:"$reply", from, reply})
     :ok

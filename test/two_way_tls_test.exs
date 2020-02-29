@@ -102,11 +102,11 @@ defmodule ErpsTest.TwoWayTlsTest do
           ssl_opts: [cacertfile: path("rootCA.pem")])
         Process.sleep(100)
       end)
-      [_, client, server] = String.split(log, "[info]")
-      assert client =~ "Handshake Failure"
-      assert client =~ ":client:"
-      assert server =~ "Handshake Failure"
-      assert server =~ ":server:"
+      [_, clientlog, serverlog | _] = String.split(log, "[info]")
+      assert clientlog =~ "Handshake Failure"
+      assert clientlog =~ ":client:"
+      assert serverlog =~ "Handshake Failure"
+      assert serverlog =~ ":server:"
 
       # make sure good client still works
       verify.()
@@ -130,11 +130,11 @@ defmodule ErpsTest.TwoWayTlsTest do
         Process.sleep(100)
       end)
 
-      [_, client, server] = String.split(log, "[info]")
-      assert client =~ "Unknown CA"
-      assert client =~ ":client:"
-      assert server =~ "Unknown CA"
-      assert server =~ ":server:"
+      [_, clientlog, serverlog | _] = String.split(log, "[info]")
+      assert clientlog =~ "Unknown CA"
+      assert clientlog =~ ":client:"
+      assert serverlog =~ "Unknown CA"
+      assert serverlog =~ ":server:"
 
       # make sure good client is undisrupted
       verify.()
@@ -154,11 +154,11 @@ defmodule ErpsTest.TwoWayTlsTest do
         Process.sleep(100)
       end)
 
-      [_, server, client] = String.split(log, "[info]")
-      assert client =~ "Unknown CA"
-      assert client =~ ":client:"
-      assert server =~ "Unknown CA"
-      assert server =~ ":server:"
+      [_, serverlog, clientlog | _] = String.split(log, "[info]")
+      assert clientlog =~ "Unknown CA"
+      assert clientlog =~ ":client:"
+      assert serverlog =~ "Unknown CA"
+      assert serverlog =~ ":server:"
 
       # make sure good client is undisrupted
       verify.()
@@ -177,11 +177,11 @@ defmodule ErpsTest.TwoWayTlsTest do
         ])
       end)
 
-      [_, server, client] = String.split(log, "[info]")
-      assert client =~ "Bad Certificate"
-      assert client =~ ":client:"
-      assert server =~ "Bad Certificate"
-      assert server =~ ":server:"
+      [_, serverlog, clientlog | _] = String.split(log, "[info]")
+      assert clientlog =~ "Bad Certificate"
+      assert clientlog =~ ":client:"
+      assert serverlog =~ "Bad Certificate"
+      assert serverlog =~ ":server:"
 
       verify.()
     end
@@ -266,7 +266,7 @@ defmodule ErpsTest.TwoWayTlsTest do
     end
 
     # note that fully disjoint CAs is already tested in the previous section.
-    test "client rejects if the server is rooted to the wrong root CA" do
+    test "client rejects if the server cert is rooted to the wrong root CA" do
       {:ok, server} = Server.start_link(self(),
         strategy: Erps.TLS,
         ssl_opts: [
@@ -288,11 +288,11 @@ defmodule ErpsTest.TwoWayTlsTest do
             reuse_sessions: false])
         Process.sleep(100)
       end)
-      [_, client, server] = String.split(log, "[info]")
-      assert client =~ "Unknown CA"
-      assert client =~ ":client:"
-      assert server =~ "Unknown CA"
-      assert server =~ ":server:"
+      [_, clientlog, serverlog | _] = String.split(log, "[info]")
+      assert clientlog =~ "Unknown CA"
+      assert clientlog =~ ":client:"
+      assert serverlog =~ "Unknown CA"
+      assert serverlog =~ ":server:"
     end
 
     test "client rejects if the server has the wrong key" do
@@ -317,11 +317,11 @@ defmodule ErpsTest.TwoWayTlsTest do
             reuse_sessions: false])
         Process.sleep(100)
       end)
-      [_, client, server] = String.split(log, "[info]")
-      assert client =~ "Decrypt Error"
-      assert client =~ ":client:"
-      assert server =~ "Decrypt Error"
-      assert server =~ ":server:"
+      [_, clientlog, serverlog | _] = String.split(log, "[info]")
+      assert clientlog =~ "Decrypt Error"
+      assert clientlog =~ ":client:"
+      assert serverlog =~ "Decrypt Error"
+      assert serverlog =~ ":server:"
     end
   end
 
