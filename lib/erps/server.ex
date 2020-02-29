@@ -3,7 +3,7 @@ defmodule Erps.Server do
   if Mix.env() in [:dev, :test] do
     @default_strategy Erps.TCP
   else
-    @default_strategy Erps.TwoWayTLS
+    @default_strategy Erps.TLS
   end
 
   defmacro __using__(opts) do
@@ -77,7 +77,7 @@ defmodule Erps.Server do
 
     strategy = inner_opts[:strategy] || @default_strategy
 
-    case strategy.listen(port, [:binary, active: true, reuseaddr: true]) do
+    case strategy.listen(port, [:binary, active: false, reuseaddr: true]) do
       {:ok, socket} ->
         server_opts = Keyword.merge(inner_opts,
           module: module, port: port, socket: socket, decode_opts: decode_opts,
@@ -163,6 +163,8 @@ defmodule Erps.Server do
     |> process_noreply(state)
   end
 
+  @closed [:tcp_closed, :ssl_closed]
+
   @impl true
   def handle_info(:accept, state = %{strategy: strategy}) do
     Process.send_after(self(), :accept, 0)
@@ -202,7 +204,7 @@ defmodule Erps.Server do
       strategy.send(socket, tcp_data)
       {:noreply, state}
   end
-  def handle_info({:tcp_closed, port}, state) do
+  def handle_info({closed, port}, state) when closed in @closed do
     {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
   end
   def handle_info({:"$reply", from, reply}, state) do

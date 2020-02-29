@@ -53,8 +53,6 @@ defmodule ErpsTest.ClientConnectionTest do
   defmodule Server do
     use Erps.Server
 
-    @localhost {127, 0, 0, 1}
-
     def start_link(port) do
       Erps.Server.start(__MODULE__, self(), port: port)
     end

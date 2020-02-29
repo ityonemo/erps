@@ -7,7 +7,7 @@ defmodule Erps.Client do
   if Mix.env() in [:dev, :test] do
     @default_strategy Erps.TCP
   else
-    @default_strategy Erps.TwoWayTLS
+    @default_strategy Erps.TLS
   end
 
   # by default, attempt a reconnect every minute.
@@ -129,7 +129,7 @@ defmodule Erps.Client do
       strategy: strategy,
       packet_type: strategy.packet_type()])
 
-    with {:ok, socket} <- strategy.connect(server, port, [:binary, active: true]),
+    with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
          upgraded <- strategy.upgrade!(socket, opts[:ssl_opts]) do
       start
       |> module.init()
@@ -167,6 +167,8 @@ defmodule Erps.Client do
     {:noreply, state}
   end
 
+  @closed [:tcp_closed, :ssl_closed]
+
   @impl true
   def handle_info({ptype, socket, data}, state = %{socket: socket, packet_type: ptype})do
 
@@ -190,8 +192,8 @@ defmodule Erps.Client do
         {:noreply, state}
     end
   end
-  def handle_info({:tcp_closed, socket}, state = %{socket: socket}) do
-    {:stop, :tcp_closed, state}
+  def handle_info({closed, socket}, state = %{socket: socket}) when closed in @closed do
+    {:stop, closed, state}
   end
   def handle_info(:"$reconnect", state = %{socket: nil, strategy: strategy}) do
     case strategy.connect(state.server, state.port, [:binary, active: true]) do

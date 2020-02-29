@@ -1,68 +1,40 @@
 require Logger
 
 tempdir_name = Base.encode16(:crypto.strong_rand_bytes(32))
-tempdir = Path.join("/tmp/.erps-test", tempdir_name)
+tempdir = Path.join([System.tmp_dir!(), ".erps-test", tempdir_name])
+
+ExUnit.after_suite(fn %{failures: 0} ->
+  # only clean up our temporary directory if it was succesful
+  System.tmp_dir!()
+  |> Path.join(".erps-test")
+  |> File.rm_rf!()
+  :ok
+  _ -> :ok
+end)
+
 File.mkdir_p!(tempdir)
 
 Logger.info("test certificates path: #{tempdir}")
 
 # make your own CA
-
-ca_key = X509.PrivateKey.new_ec(:secp256r1)
-ca_key_pem_path = Path.join(tempdir, "rootCA.key")
-File.write!(ca_key_pem_path, X509.PrivateKey.to_pem(ca_key))
-
-ca = X509.Certificate.self_signed(ca_key,
-  "/C=US/ST=CA/L=San Francisco/O=Acme/CN=ECDSA Root CA",
-  template: :root_ca)
-ca_pem_path = Path.join(tempdir, "rootCA.pem")
-File.write!(ca_pem_path, X509.Certificate.to_pem(ca))
-
+{ca, ca_key} = ErpsTest.TlsFileGen.generate_root(tempdir, "rootCA")
 # generate server authentications
-server_key = X509.PrivateKey.new_ec(:secp256r1)
-server_key_pem_path = Path.join(tempdir, "server.key")
-File.write!(server_key_pem_path, X509.PrivateKey.to_pem(ca_key))
-
-server_csr = X509.CSR.new(server_key,
-  "/C=US/ST=CA/L=San Francisco/O=Acme",
-  extension_request: [
-    X509.Certificate.Extension.subject_alt_name(["127.0.0.1"])])
-server_csr_path = Path.join(tempdir, "server.csr")
-File.write!(server_csr_path, X509.CSR.to_pem(server_csr))
-
-server_cert = server_csr
-|> X509.CSR.public_key
-|> X509.Certificate.new(
-  "/C=US/ST=CA/L=San Francisco/O=Acme",
-  ca, ca_key, extensions: [
-    subject_alt_name: X509.Certificate.Extension.subject_alt_name(["127.0.0.1"])
-  ]
-)
-server_cert_path = Path.join(tempdir, "server.cert")
-File.write!(server_cert_path, X509.Certificate.to_pem(server_cert))
-
+ErpsTest.TlsFileGen.generate_cert(tempdir, "server", ca, ca_key)
 # generate client authentications
-client_key = X509.PrivateKey.new_ec(:secp256r1)
-client_key_pem_path = Path.join(tempdir, "client.key")
-File.write!(client_key_pem_path, X509.PrivateKey.to_pem(ca_key))
+ErpsTest.TlsFileGen.generate_cert(tempdir, "client", ca, ca_key)
 
-client_csr = X509.CSR.new(client_key,
-  "/C=US/ST=CA/L=San Francisco/O=Acme",
-  extension_request: [
-    X509.Certificate.Extension.subject_alt_name(["127.0.0.1"])])
-client_csr_path = Path.join(tempdir, "client.csr")
-File.write!(client_csr_path, X509.CSR.to_pem(client_csr))
+# generate a key that is unrelated to the correct keys.
+ErpsTest.TlsFileGen.generate_key(tempdir, "wrong-key")
 
-client_cert = client_csr
-|> X509.CSR.public_key
-|> X509.Certificate.new(
-  "/C=US/ST=CA/L=San Francisco/O=Acme",
-  ca, ca_key, extensions: [
-    subject_alt_name: X509.Certificate.Extension.subject_alt_name(["127.0.0.1"])
-  ]
-)
-client_cert_path = Path.join(tempdir, "client.cert")
-File.write!(client_cert_path, X509.Certificate.to_pem(client_cert))
+# generate a client and cert that has wrong hosts.
+ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-host", ca, ca_key, host: "1.1.1.1")
+
+# make a chain of content that comes from the wrong CA root
+{wrong_ca, wrong_ca_key} = ErpsTest.TlsFileGen.generate_root(tempdir, "wrong-rootCA")
+# generate server authentications
+ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-root-server", wrong_ca, wrong_ca_key)
+# generate client authentications
+ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-root-client", wrong_ca, wrong_ca_key)
 
 defmodule ErpsTest.TlsFiles do
   @path tempdir
