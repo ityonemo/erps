@@ -75,19 +75,14 @@ defmodule Erps.Packet do
 
     cond do
       # verify that we are doing the same rpc.
-      srv_identifier && (srv_identifier != trim(pkt_identifier)) ->
+      identifier_mismatches?(srv_identifier, pkt_identifier) ->
         {:error, "wrong rpc"}
       # verify that we are using an acceptable version
-      version_req && (not Version.match?("#{v1}.#{v2}.#{v3}", version_req)) ->
+      version_mismatches?(version_req, %Version{major: v1, minor: v2, patch: v3, pre: []}) ->
         {:error, "incompatible version"}
-      # if we care about auth, and don't provide it, die.
-      (hmac_key == @empty_key || signature == @empty_sig) && verification ->
-        {:error, "authentication required"}
       # if verified, go ahead and generate the packet.
-      verification && verification.(empty_sig(packet), hmac_key, signature) ->
-        binary_to_packet(packet, binary_to_term)
       verification ->
-        {:error, "authentication failed"}
+        verify_and_convert(verification, binary_to_term, packet, hmac_key, signature)
       # if we don't care about auth, fail if provided.
       hmac_key != @empty_key ->
         {:error, "authentication provided"}
@@ -102,6 +97,30 @@ defmodule Erps.Packet do
     {:error, "invalid code"}
   end
   def decode(_, _), do: {:error, "malformed packet"}
+
+  defp identifier_mismatches?(nil, _), do: false
+  defp identifier_mismatches?(srv_identifier, pkt_identifier) do
+    srv_identifier != trim(pkt_identifier)
+  end
+
+  defp version_mismatches?(nil, _), do: false
+  defp version_mismatches?(version_req, version) do
+    not Version.match?(version, version_req)
+  end
+
+  # if we care about auth, and don't provide it, die.
+  defp verify_and_convert(_, _, _, @empty_key, _), do: {:error, "authentication required"}
+  defp verify_and_convert(_, _, _, _, @empty_sig), do: {:error, "authentication required"}
+  defp verify_and_convert(verification, binary_to_term, packet, hmac_key, signature) do
+    packet
+    |> empty_sig
+    |> verification.(hmac_key, signature)
+    |> if do
+      binary_to_packet(packet, binary_to_term)
+    else
+      {:error, "authentication failed"}
+    end
+  end
 
   ##############################################################################
 
@@ -148,7 +167,7 @@ defmodule Erps.Packet do
     version = packet.version
 
     payload_binary = if opts[:compressed] do
-      compression = if (opts[:compressed] === true), do: :compressed, else: {:compressed, opts[:compressed]}
+      compression = if opts[:compressed] === true, do: :compressed, else: {:compressed, opts[:compressed]}
       :erlang.term_to_binary(packet.payload, [compression, minor_version: 2])
     else
       :erlang.term_to_binary(packet.payload)
@@ -179,9 +198,8 @@ defmodule Erps.Packet do
   defp trim(binary) do
     prefix_size = :erlang.size(binary) - 1
     case binary do
-        <<prefix::binary-size(prefix_size), 0>> -> trim(prefix);
+        <<prefix::binary-size(prefix_size), 0>> -> trim(prefix)
         _ -> binary
     end
   end
-
 end

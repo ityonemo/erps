@@ -8,7 +8,6 @@ defmodule ErpsTest.Packet.DecodeTest do
   @simplest_term []
   @simplest_payload :erlang.term_to_binary(@simplest_term)
 
-
   describe "when sending a call packet" do
     test "the most basic decode works" do
       assert {:ok, %Packet{type: :call, payload: []}} =

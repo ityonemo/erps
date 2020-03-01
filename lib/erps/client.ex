@@ -61,7 +61,7 @@ defmodule Erps.Client do
     keepalive: @default_keepalive,
     strategy: @default_strategy]
 
-  @type hmac_function :: ( -> String.t)
+  @type hmac_function :: (() -> String.t)
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
 
   @typep state :: %__MODULE__{

@@ -4,4 +4,3 @@ __ENV__.file
 |> Code.require_file
 
 ExUnit.start()
-

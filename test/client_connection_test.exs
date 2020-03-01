@@ -24,7 +24,7 @@ defmodule ErpsTest.ClientConnectionTest do
 
   describe "when a client connects and fails to find a server" do
     test "calls result in throws" do
-      port = Enum.random(10000..30000)
+      port = Enum.random(10_000..30_000)
       {:ok, client} = Client.start(port)
       Process.monitor(client)
 
@@ -34,18 +34,18 @@ defmodule ErpsTest.ClientConnectionTest do
         :exit, {reason, _} -> reason
       end)
 
-      refute_receive {:DOWN, _, _, ^client, _,}, 500
+      refute_receive {:DOWN, _, _, ^client, _}, 500
       Process.exit(client, :kill)
     end
 
     test "casts don't fault" do
-      port = Enum.random(10000..30000)
+      port = Enum.random(10_000..30_000)
       {:ok, client} = Client.start(port)
       Process.monitor(client)
 
       GenServer.cast(client, :foo)
 
-      refute_receive {:DOWN, _, _, ^client, _,}, 500
+      refute_receive {:DOWN, _, _, ^client, _}, 500
       Process.exit(client, :kill)
     end
   end
@@ -63,9 +63,8 @@ defmodule ErpsTest.ClientConnectionTest do
     def handle_call(any, _from, state), do: {:reply, any, state}
   end
 
-  @tag :one
   test "clients can reconnect to servers" do
-    port = Enum.random(10000..30000)
+    port = Enum.random(10_000..30_000)
     {:ok, client} = Client.start_link(port)
 
     # give it 750 milliseconds
@@ -78,6 +77,4 @@ defmodule ErpsTest.ClientConnectionTest do
 
     assert :foo == GenServer.call(client, :foo, 500)
   end
-
-
 end
