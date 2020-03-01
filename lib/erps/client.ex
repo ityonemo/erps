@@ -52,8 +52,13 @@ defmodule Erps.Client do
     end
   end
 
+  # one minute keepalive interval.
+  @default_keepalive 60_000
+
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
     :encode_opts, :hmac_key, :signature, :reconnect, :packet_type,
+    ssl_opts: [],
+    keepalive: @default_keepalive,
     strategy: @default_strategy]
 
   @type hmac_function :: ( -> String.t)
@@ -71,18 +76,20 @@ defmodule Erps.Client do
     signature:   nil | signing_function,
     reconnect:   non_neg_integer,
     packet_type: :tcp | :ssl,
+    ssl_opts:    keyword,
+    keepalive:   timeout,
     strategy:    module
   }
 
   require Logger
 
   def start(module, state, opts) do
-    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts])
+    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts, :keepalive])
     GenServer.start(__MODULE__, {module, state, inner_opts}, opts)
   end
 
   def start_link(module, state, opts) do
-    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts])
+    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts, :keepalive])
     GenServer.start_link(__MODULE__, {module, state, inner_opts}, opts)
   end
 
@@ -114,6 +121,8 @@ defmodule Erps.Client do
         [sign_with: &apply(mod, fun, [&1, hmac_key])]
     end
 
+    ssl_opts = opts[:ssl_opts] || []
+    keepalive = opts[:keepalive] || @default_keepalive
     strategy = opts[:strategy] || @default_strategy
 
     reconnect = case module.__info__(:attributes)[:reconnect] do
@@ -130,7 +139,8 @@ defmodule Erps.Client do
       packet_type: strategy.packet_type()])
 
     with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
-         upgraded <- strategy.upgrade!(socket, opts[:ssl_opts]) do
+         upgraded <- strategy.upgrade!(socket, ssl_opts) do
+      Process.send_after(self(), :"$keepalive", keepalive)
       start
       |> module.init()
       |> process_init(base_options ++ [socket: upgraded])
@@ -198,11 +208,19 @@ defmodule Erps.Client do
   def handle_info(:"$reconnect", state = %{socket: nil, strategy: strategy}) do
     case strategy.connect(state.server, state.port, [:binary, active: true]) do
       {:ok, socket} ->
-        {:noreply, %{state | socket: socket}}
+        upgraded = strategy.upgrade!(socket, state.ssl_opts)
+        Process.send_after(self(), :"$keepalive", state.keepalive)
+        {:noreply, %{state | socket: upgraded}}
       {:error, :econnrefused} ->
         Process.send_after(self(), :"$reconnect", state.reconnect)
         {:noreply, state}
     end
+  end
+  def handle_info(:"$keepalive", state = %{strategy: strategy}) do
+    keepalive_packet = Packet.encode(%Packet{})
+    strategy.send(state.socket, keepalive_packet)
+    Process.send_after(self(), :"$keepalive", state.keepalive)
+    {:noreply, state}
   end
   def handle_info(info, state = %{module: module}) do
     info

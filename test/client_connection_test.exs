@@ -63,6 +63,7 @@ defmodule ErpsTest.ClientConnectionTest do
     def handle_call(any, _from, state), do: {:reply, any, state}
   end
 
+  @tag :one
   test "clients can reconnect to servers" do
     port = Enum.random(10000..30000)
     {:ok, client} = Client.start_link(port)

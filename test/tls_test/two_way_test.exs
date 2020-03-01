@@ -102,12 +102,8 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
           ssl_opts: [cacertfile: path("rootCA.pem")])
         Process.sleep(100)
       end)
-      [_, clientlog, serverlog | _] = String.split(log, "[info]")
-      assert clientlog =~ "Handshake Failure"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Handshake Failure"
-      assert serverlog =~ ":server:"
 
+      assert log =~ "Handshake Failure"
       # make sure good client still works
       verify.()
     end
@@ -130,11 +126,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         Process.sleep(100)
       end)
 
-      [_, clientlog, serverlog | _] = String.split(log, "[info]")
-      assert clientlog =~ "Unknown CA"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Unknown CA"
-      assert serverlog =~ ":server:"
+      assert log =~ "Unknown CA"
 
       # make sure good client is undisrupted
       verify.()
@@ -154,11 +146,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         Process.sleep(100)
       end)
 
-      [_, serverlog, clientlog | _] = String.split(log, "[info]")
-      assert clientlog =~ "Unknown CA"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Unknown CA"
-      assert serverlog =~ ":server:"
+      assert log =~ "Unknown CA"
 
       # make sure good client is undisrupted
       verify.()
@@ -177,11 +165,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         ])
       end)
 
-      [_, serverlog, clientlog | _] = String.split(log, "[info]")
-      assert clientlog =~ "Bad Certificate"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Bad Certificate"
-      assert serverlog =~ ":server:"
+      assert log =~ "Bad Certificate"
 
       verify.()
     end
@@ -288,11 +272,8 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
             reuse_sessions: false])
         Process.sleep(100)
       end)
-      [_, clientlog, serverlog | _] = String.split(log, "[info]")
-      assert clientlog =~ "Unknown CA"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Unknown CA"
-      assert serverlog =~ ":server:"
+
+      assert log =~ "Unknown CA"
     end
 
     test "client rejects if the server has the wrong key" do
@@ -317,11 +298,8 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
             reuse_sessions: false])
         Process.sleep(100)
       end)
-      [_, clientlog, serverlog | _] = String.split(log, "[info]")
-      assert clientlog =~ "Decrypt Error"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Decrypt Error"
-      assert serverlog =~ ":server:"
+
+      assert log =~ "Decrypt Error"
     end
   end
 

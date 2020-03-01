@@ -333,4 +333,27 @@ defmodule ErpsTest.Parameters.ClientTest do
     end
   end
 
+  defmodule ClientKeepalive do
+
+    use Erps.Client
+
+    @localhost {127, 0, 0, 1}
+
+    def start_link(port) do
+      Erps.Client.start_link(__MODULE__, port,
+        server: @localhost,
+        port: port,
+        keepalive: 100)
+    end
+
+    def init(test_pid), do: {:ok, test_pid}
+  end
+
+  describe "when the client is instrumented with a keepalive" do
+    test "the server gets a keepalive", %{port: port} do
+      {:ok, _} = ClientKeepalive.start_link(port)
+      Process.sleep(200)
+      assert {:ok, %{type: :keepalive}} = Packet.decode(receive do {:tcp, _, data} -> data end)
+    end
+  end
 end

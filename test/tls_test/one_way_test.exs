@@ -160,12 +160,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
         Process.sleep(@logsleep)
       end)
 
-      [_, clientlog, serverlog | _] = String.split(log, "[info]")
-
-      assert clientlog =~ "Unknown CA"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Unknown CA"
-      assert serverlog =~ ":server:"
+      assert log =~ "Unknown CA"
     end
 
     test "client rejects if the server chain is rooted to the wrong CA" do
@@ -179,12 +174,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
         Process.sleep(@logsleep)
       end)
 
-      [_, clientlog, serverlog | _] = String.split(log, "[info]")
-
-      assert clientlog =~ "Unknown CA"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Unknown CA"
-      assert serverlog =~ ":server:"
+      assert log =~ "Unknown CA"
     end
 
     test "client rejects if the server chain has the wrong key" do
@@ -198,12 +188,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
         Process.sleep(@logsleep)
       end)
 
-      [_, clientlog, serverlog | _] = String.split(log, "[info]")
-
-      assert clientlog =~ "Decrypt Error"
-      assert clientlog =~ ":client:"
-      assert serverlog =~ "Decrypt Error"
-      assert serverlog =~ ":server:"
+      assert log =~ "Decrypt Error"
     end
   end
 end
