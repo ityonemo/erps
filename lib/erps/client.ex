@@ -83,11 +83,36 @@ defmodule Erps.Client do
 
   require Logger
 
+  @doc """
+  starts a client GenServer, not linked to the caller. Most useful for tests.
+
+  see `start_link/3` for a description of avaliable options.
+  """
   def start(module, state, opts) do
     inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts, :keepalive])
     GenServer.start(__MODULE__, {module, state, inner_opts}, opts)
   end
 
+  @doc """
+  starts a client GenServer, linked to the caller.
+
+  Will attempt to contact the server over the specified transport strategy.  If the
+  connection fails, the client will be placed in an invalid state until connection
+  succeeds, with a reconnect interval specified in the module options.
+
+  ### options
+
+  - `:server`    IP address of the target server (required)
+  - `:port`      IP port of the target server (required)
+  - `:strategy`  module for communication transport strategy
+  - `:keepalive` time interval for sending a TCP/IP keepalive token.
+  - `:ssl_opts`  options for setting up a TLS connection.
+    - `:cacertfile` path to the certificate of your signing authority. (required)
+    - `:certfile`   path to the server certificate file. (required for `Erps.Strategy.Tls`)
+    - `:keyfile`    path to the signing key. (required for `Erps.Strategy.Tls`)
+
+  see `GenServer.start_link/3` for a description of further options.
+  """
   def start_link(module, state, opts) do
     inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts, :keepalive])
     GenServer.start_link(__MODULE__, {module, state, inner_opts}, opts)
@@ -318,7 +343,7 @@ defmodule Erps.Client do
   current state of the `Erps.Client`.
 
   ### Return codes
-  see return codes for `handle_continue/2`
+  see return codes for `c:handle_continue/2`
   """
   @callback handle_push(push :: term, state :: term) ::
     {:noreply, new_state}
@@ -333,8 +358,10 @@ defmodule Erps.Client do
   such as nodedown or monitored processes, but also useful for internal
   timeouts.
 
+  see: `c:GenServer.handle_info/2`.
+
   ### Return codes
-  see return codes for `handle_continue/2`
+  see return codes for `c:handle_continue/2`
   """
   @callback handle_info(msg :: :timeout | term(), state :: term()) ::
     {:noreply, new_state}
@@ -344,11 +371,14 @@ defmodule Erps.Client do
 
   @doc """
   Invoked when an internal callback requests a continuation, using `{:noreply,
-  state, {:continue, continuation}}`.
+  state, {:continue, continuation}}`, or from `c:init/1` using
+  `{:ok, state, {:continue, continuation}}`
 
   The continuation is passed as the first argument of this callback.  Most
-  useful if `c:init/2` functionality is long-running and needs to be broken
-  up into separate parts so that the calling `start_link/2` doesn't block.
+  useful if `c:init/1` functionality is long-running and needs to be broken
+  up into separate parts so that the calling `start_link/3` doesn't block.
+
+  see: `c:GenServer.handle_continue/2`.
 
   ### Return codes
   - `{:noreply, new_state}` continues the loop with new state `new_state`

@@ -49,7 +49,7 @@ defmodule Erps.Server do
   @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after]
 
   @doc """
-  starts a server process, not linked to the caller. Most useful for tests.
+  starts a server GenServer, not linked to the caller. Most useful for tests.
 
   see `start_link/3` for a description of avaliable options.
   """
@@ -60,7 +60,7 @@ defmodule Erps.Server do
   end
 
   @doc """
-  starts a server process, linked to the caller.
+  starts a server GenServer, linked to the caller.
 
   ### options
 
@@ -365,6 +365,27 @@ defmodule Erps.Server do
   """
   @opaque from :: GenServer.from | {:remote, :inet.socket, GenServer.from}
 
+  @doc """
+  Invoked to set up the process.
+
+  Like `GenServer.init/1`, this function is called from inside
+  the process immediately after `start_link/3` or `start/3`.
+
+  ### Return codes
+  - `{:ok, state}` a succesful startup of your intialization logic and sets the
+    internal state of your server to `state`.
+  - `{:ok, state, timeout}` the above, plus a :timeout atom will be sent to
+    `c:handle_info/2` *if no other messages come by*.
+  - `{:ok, state, :hibernate}` successful startup, followed by a hibernation
+    event (see `:erlang.hibernate/3`)
+  - `{:ok, state, {:continue, term}}` successful startup, and causes a
+    continuation to be triggered after the message is handled, sent to
+    `c:handle_continue/3`
+  - `:ignore` - Drop the gen_server creation request, because for some reason
+    it shouldn't have started.
+  - `{:stop, reason}` - a failure in creating the gen_server.  Results in
+    `{:error, reason}` being propagated as the result of the start_link
+  """
   @callback init(init_arg :: term()) ::
     {:ok, state}
     | {:ok, state, timeout() | :hibernate | {:continue, term()}}
@@ -373,11 +394,24 @@ defmodule Erps.Server do
     when state: term
 
   @doc """
-  similar to `c:GenServer.handle_call/3`.
+  similar to `c:GenServer.handle_call/3`, but handles content from both
+  local and remote clients.
 
-  Handles content from both local or remote clients.  The `from` term might
-  contain a opaque term which represents a return address for a remote
-  client, but you may use this as expected in `reply/2`.
+  The `from` term might contain a opaque term which represents a return
+  address for a remote client, but you may use this term as expected in
+  `reply/2`.
+
+  ### Return codes
+  - `{:reply, reply, new_state}` replies, then updates the state of the
+    Server.
+  - `{:reply, reply, new_state, timeout}` replies, then causes a :timeout
+    message to be sent to `c:handle_info/2` *if no other message comes by*
+  - `{:reply, reply, new_state, :hibernate}` replies, then causes a
+    hibernation event (see `:erlang.hibernate/3`)
+  - `{:reply, reply, new_state, {:continue, term}}` replies, then causes
+    a continuation to be triggered after the message is handled, it will
+    be sent to `c:handle_continue/3`
+  - and all return codes supported by `c:GenServer.handle_cast/2`
   """
   @callback handle_call(request :: term, from, state :: term) ::
     {:reply, reply, new_state}
@@ -389,9 +423,20 @@ defmodule Erps.Server do
     when reply: term, new_state: term, reason: term
 
   @doc """
-  similar to `c:GenServer.handle_cast/2`.
+  similar to `c:GenServer.handle_cast/2`, but handles content from both local
+  and remote clients (if the content has been successfully filtered).
 
-  Handles content from both local or remote clients.
+  ### Return codes
+  - `{:noreply, new_state}` continues the loop with new state `new_state`
+  - `{:noreply, new_state, timeout}` causes a :timeout message to be sent to
+    `c:handle_info/2` *if no other message comes by*
+  - `{:noreply, new_state, :hibernate}`, causes a hibernation event (see
+    `:erlang.hibernate/3`)
+  - `{:noreply, new_state, {:continue, term}}` causes a continuation to be
+    triggered after the message is handled, it will be sent to
+    `c:handle_continue/3`
+  - `{:stop, reason, new_state}` terminates the loop, passing `new_state`
+    to `c:terminate/2`, if it's implemented.
   """
   @callback handle_cast(request :: term(), state :: term()) ::
     {:noreply, new_state}
@@ -400,7 +445,16 @@ defmodule Erps.Server do
     when new_state: term()
 
   @doc """
+  Invoked to handle general messages sent to the client process.
+
+  Most useful if the client needs to be attentive to system messages,
+  such as nodedown or monitored processes, but also useful for internal
+  timeouts.
+
   see: `c:GenServer.handle_info/2`.
+
+  ### Return codes
+  see return codes for `c:handle_cast/2`
   """
   @callback handle_info(msg :: :timeout | term(), state :: term()) ::
     {:noreply, new_state}
@@ -409,7 +463,14 @@ defmodule Erps.Server do
     when new_state: term()
 
   @doc """
+  Invoked when an internal callback requests a continuation, using `{:noreply,
+  state, {:continue, continuation}}`, or from `c:init/1` using
+  `{:ok, state, {:continue, continuation}}`
+
   see: `c:GenServer.handle_continue/2`.
+
+  ### Return codes
+  see return codes for `c:handle_cast/2`
   """
   @callback  handle_continue(continue :: term(), state :: term()) ::
     {:noreply, new_state}
