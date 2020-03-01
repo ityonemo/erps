@@ -5,9 +5,9 @@ defmodule Erps.Client do
   @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
 
   if Mix.env() in [:dev, :test] do
-    @default_strategy Erps.TCP
+    @default_strategy Erps.Strategy.Tcp
   else
-    @default_strategy Erps.TLS
+    @default_strategy Erps.Strategy.Tls
   end
 
   # by default, attempt a reconnect every minute.

@@ -5,6 +5,8 @@ defmodule ErpsTest.TlsTest.OneWayTest do
   @moduletag :tls
   @logsleep 200
 
+  alias Erps.Strategy.{OneWayTls, Tcp, Tls}
+
   defmodule Client do
     use Erps.Client
 
@@ -49,7 +51,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
   @localhost {127, 0, 0, 1}
 
   def make_server(fun \\ :start_link, opts) do
-    with {:ok, server} <- apply(Server, fun, [self(), [strategy: Erps.OneWayTLS, ssl_opts: opts]]),
+    with {:ok, server} <- apply(Server, fun, [self(), [strategy: OneWayTls, ssl_opts: opts]]),
          {:ok, port} <- Server.port(server) do
       port
     end
@@ -58,10 +60,10 @@ defmodule ErpsTest.TlsTest.OneWayTest do
   def make_client(fun \\ :start_link, port) do
     apply(Client, fun, [[
       port: port,
-      strategy: Erps.OneWayTLS,
+      strategy: Erps.Strategy.OneWayTls,
       ssl_opts: [
         cacertfile: path("rootCA.pem"),
-        customize_hostname_check: Erps.TLS.single_ip_check(@localhost),
+        customize_hostname_check: Tls.single_ip_check(@localhost),
         reuse_sessions: false
       ]]])
   end
@@ -124,7 +126,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
         keyfile:    path("server.key"))
       {:ok, client} = make_client(port)
 
-      {:ok, bad_client} = Client.start(port: port, strategy: Erps.TCP)
+      {:ok, bad_client} = Client.start(port: port, strategy: Tcp)
       Process.monitor(bad_client)
       assert Process.alive?(bad_client)
       spawn(fn -> GenServer.call(bad_client, :foo, 100) end)
@@ -143,7 +145,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
         cacertfile: path("rootCA.pem"),
         certfile:   path("server.cert"),
         keyfile:    path("server.key"))
-      assert {:error, _} = Client.start(port: port, strategy: Erps.TLS)
+      assert {:error, _} = Client.start(port: port, strategy: Tls)
     end
 
     ###########################################################################

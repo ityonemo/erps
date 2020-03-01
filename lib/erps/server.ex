@@ -1,9 +1,9 @@
 defmodule Erps.Server do
 
   if Mix.env() in [:dev, :test] do
-    @default_strategy Erps.TCP
+    @default_strategy Erps.Strategy.Tcp
   else
-    @default_strategy Erps.TLS
+    @default_strategy Erps.Strategy.Tls
   end
 
   defmacro __using__(opts) do
@@ -40,21 +40,55 @@ defmodule Erps.Server do
     strategy: @default_strategy,
     connections: []]
 
+  @typep state :: %__MODULE__{}
+
   @behaviour GenServer
 
   alias Erps.Packet
 
+  @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after]
+
+  @doc """
+  starts a server process, not linked to the caller. Most useful for tests.
+
+  see `start_link/3` for a description of avaliable options.
+  """
+  @spec start(module, term, keyword) :: GenServer.on_start
   def start(module, param, opts \\ []) do
-    inner_opts = Keyword.take(opts, [:port, :strategy, :ssl_opts])
-    GenServer.start(__MODULE__, {module, param, inner_opts}, opts)
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    GenServer.start(__MODULE__, {module, param, inner_opts}, gen_server_opts)
   end
 
+  @doc """
+  starts a server process, linked to the caller.
+
+  ### options
+
+  - `:port` tcp port that the server should listen to.  Use `0` to pick an unused
+    port and `port/1` to retrieve that port number (useful for testing)
+  - `:strategy` strategy module (see `Erps.Strategy.Api`)
+  - `:ssl_opts` options for TLS authorization and encryption.  Should include:
+    - `:cacertfile` path to the certificate of your signing authority.
+    - `:certfile`   path to the server certificate file.
+    - `:keyfile`    path to the signing key.
+
+  see `GenServer.start_link/3` for a description of further options.
+  """
+  @spec start_link(module, term, keyword) :: GenServer.on_start
   def start_link(module, param, opts \\ []) do
-    inner_opts = Keyword.take(opts, [:port, :strategy, :ssl_opts])
-    GenServer.start_link(__MODULE__, {module, param, inner_opts}, opts)
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    GenServer.start_link(__MODULE__, {module, param, inner_opts}, gen_server_opts)
   end
 
   @impl true
+  @doc false
+  @spec init({module, term, keyword}) ::
+    {:ok, state}
+    | {:ok, state, timeout() | :hibernate | {:continue, term()}}
+    | :ignore
+    | {:stop, reason :: any()}
+    when state: any()
+
   def init({module, param, opts}) do
     port = opts[:port] || 0
 
@@ -97,17 +131,46 @@ defmodule Erps.Server do
   #############################################################################
   ## API
 
+  # convenience type that lets us annotate internal call reply types sane.
+  @typep reply(type) :: {:reply, type, state}
+
+  @type socket :: :inet.socket | :ssl.socket
+
+  @type server :: GenServer.server
+
+  @doc """
+  queries the server to retrieve the TCP port that it's bound to to receive
+  protocol messages.
+
+  Useful if you have initiated your server with `port: 0`, especially in tests.
+  """
+  @spec port(server) :: {:ok, :inet.port_number} | {:error, any}
   def port(srv), do: GenServer.call(srv, :"$port")
+  @spec port_impl(state) :: reply({:ok, :inet.port_number} | {:error, any})
   defp port_impl(state) do
     {:reply, :inet.port(state.socket), state}
   end
 
+  @doc """
+  queries the server to retrieve a list of all clients that are connected
+  to the server.
+  """
+  @spec connections(server) :: [socket]
   def connections(srv), do: GenServer.call(srv, :"$connections")
+  @spec connections_impl(state) :: reply([socket])
   defp connections_impl(state) do
     {:reply, state.connections, state}
   end
 
+  @doc """
+  instruct the server to drop one of its connections.
+
+  returns `{:error, :enoent}` if the connection is not in its list of active
+  connections.
+  """
+  @spec disconnect(server, socket) :: :ok | {:error, :enoent}
   def disconnect(srv, socket), do: GenServer.call(srv, {:"$disconnect", socket})
+  @spec disconnect_impl(socket, state) :: reply(:ok | {:error, :enoent})
   defp disconnect_impl(socket, state = %{connections: connections}) do
     if socket in connections do
       :gen_tcp.close(socket)
@@ -118,7 +181,13 @@ defmodule Erps.Server do
     end
   end
 
-  def push(srv, value), do: GenServer.call(srv, {:"$push", value})
+  @doc """
+  pushes a message to all connected clients.  Causes client `c:Erps.Client.handle_push/2`
+  callbacks to be triggered.
+  """
+  @spec push(server, push::term) :: :ok
+  def push(srv, push), do: GenServer.call(srv, {:"$push", push})
+  @spec push_impl(push :: term, state) :: reply(:ok)
   defp push_impl(push, state = %{strategy: strategy}) do
     tcp_data = Packet.encode(%Packet{
       type: :push,
@@ -131,11 +200,19 @@ defmodule Erps.Server do
   #############################################################################
   ## GenServer wrappers
 
+  @doc """
+  sends a reply to either a local process or a remotely connected client.
+
+  naturally takes the `from` value passed in to the second parameter of
+  `c:handle_call/3`.
+  """
+  @spec reply(from, term) :: :ok
   def reply(from, reply) do
     send(self(), {:"$reply", from, reply})
     :ok
   end
 
+  @spec do_reply(from, term, state) :: :ok
   defp do_reply({:remote, socket, from}, reply, %{strategy: strategy}) do
     tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
     strategy.send(socket, tcp_data)
@@ -282,7 +359,11 @@ defmodule Erps.Server do
   #############################################################################
   ## BEHAVIOUR CALLBACKS
 
-  @type from :: GenServer.from | {:remote, :inet.socket, GenServer.from}
+  @typedoc """
+  a `from` term that is either a local `from`, compatible with `t:GenServer.from/0`
+  or an opaque term that represents a connected remote client.
+  """
+  @opaque from :: GenServer.from | {:remote, :inet.socket, GenServer.from}
 
   @callback init(init_arg :: term()) ::
     {:ok, state}
@@ -291,6 +372,13 @@ defmodule Erps.Server do
     | {:stop, reason :: any()}
     when state: term
 
+  @doc """
+  similar to `c:GenServer.handle_call/3`.
+
+  Handles content from both local or remote clients.  The `from` term might
+  contain a opaque term which represents a return address for a remote
+  client, but you may use this as expected in `reply/2`.
+  """
   @callback handle_call(request :: term, from, state :: term) ::
     {:reply, reply, new_state}
     | {:reply, reply, new_state, timeout | :hibernate | {:continue, term}}
@@ -300,27 +388,50 @@ defmodule Erps.Server do
     | {:stop, reason, new_state}
     when reply: term, new_state: term, reason: term
 
+  @doc """
+  similar to `c:GenServer.handle_cast/2`.
+
+  Handles content from both local or remote clients.
+  """
   @callback handle_cast(request :: term(), state :: term()) ::
     {:noreply, new_state}
     | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
     | {:stop, reason :: term(), new_state}
     when new_state: term()
 
+  @doc """
+  see: `c:GenServer.handle_info/2`.
+  """
   @callback handle_info(msg :: :timeout | term(), state :: term()) ::
     {:noreply, new_state}
     | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
     | {:stop, reason :: term(), new_state}
     when new_state: term()
 
+  @doc """
+  see: `c:GenServer.handle_continue/2`.
+  """
   @callback  handle_continue(continue :: term(), state :: term()) ::
     {:noreply, new_state}
     | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
     | {:stop, reason :: term(), new_state}
     when new_state: term()
 
+  @doc """
+  see: `c:GenServer.terminate/2`.
+  """
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}
 
+  @doc """
+  used to filter messages from remote clients, allowing you to restrict your api.
+
+  The first term is either `:call` or `:cast`, indicating which type of api protocol
+  the filter applies to, followed by the term to be checked for filtering.  A `true`
+  response means allow, and a `false` response means drop.
+
+  Defaults to `fn _, _ -> true end` (which is permissive).
+  """
   @callback filter(mode :: Packet.type, payload :: term) :: boolean
 
   @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2,
