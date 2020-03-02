@@ -8,7 +8,7 @@ defmodule Erps.Server do
 
   ## Basic Operation
 
-  Presuming you have set up SSL/TLS credentials, you can instantiate a server
+  Presuming you have set up TLS credentials, you can instantiate a server
   in basically the same way that you would instantiate a GenServer:
 
   ```
@@ -19,7 +19,7 @@ defmodule Erps.Server do
 
     def start_link, do: Erps.Server.start_link(__MODULE__, :ok,
       port: @port,
-      ssl_opts: [...])
+      tls_opts: [...])
 
     @impl true
     def init(init_state), do: {:ok, init_state}
@@ -64,7 +64,7 @@ defmodule Erps.Server do
     def start_link(iv) do
       Erps.Client.start_link(__MODULE__, init,
         strategy: Erps.Strategy.Tls,
-        ssl_opts: [...])
+        tls_opts: [...])
     end
 
     def init(iv), do: {:ok, iv}
@@ -126,7 +126,7 @@ defmodule Erps.Server do
   alias Erps.Packet
 
   defstruct [:module, :data, :port, :socket, :decode_opts, :filter, :transport_type,
-    ssl_opts: [],
+    tls_opts: [],
     strategy: @default_strategy,
     connections: []]
 
@@ -167,7 +167,7 @@ defmodule Erps.Server do
   - `:port` tcp port that the server should listen to.  Use `0` to pick an unused
     port and `port/1` to retrieve that port number (useful for testing)
   - `:strategy` strategy module (see `Erps.Strategy.Api`)
-  - `:ssl_opts` options for TLS authorization and encryption.  Should include:
+  - `:tls_opts` options for TLS authorization and encryption.  Should include:
     - `:cacertfile` path to the certificate of your signing authority.
     - `:certfile`   path to the server certificate file.
     - `:keyfile`    path to the signing key.
@@ -208,7 +208,7 @@ defmodule Erps.Server do
     end
 
     strategy = opts[:strategy] || @default_strategy
-    listen_opts = [:binary, active: false, reuseaddr: true, ssl_opts: opts[:ssl_opts]]
+    listen_opts = [:binary, active: false, reuseaddr: true, tls_opts: opts[:tls_opts]]
 
     case strategy.listen(port, listen_opts) do
       {:ok, socket} ->
@@ -358,7 +358,7 @@ defmodule Erps.Server do
   def handle_info(:accept, state = %{strategy: strategy}) do
     Process.send_after(self(), :accept, 0)
     with {:ok, socket} <- strategy.accept(state.socket, 100),
-         {:ok, upgrade} <- strategy.handshake(socket, state.ssl_opts) do
+         {:ok, upgrade} <- strategy.handshake(socket, state.tls_opts) do
       {:noreply, %{state | connections: [upgrade | state.connections]}}
     else
       _any -> {:noreply, state}

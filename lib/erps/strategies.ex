@@ -54,8 +54,8 @@ defmodule Erps.Strategy.Api do
   Opens the port in `active: false` to ensure correct synchronization of
   `c:handshake/2` and `c:upgrade!/2` events.
 
-  NB: ssl options provided will be passed into listen to allow servers that
-  require ssl options to fail early when launching if the user doesn't supply
+  NB: tls options provided will be passed into listen to allow servers that
+  require tls options to fail early when launching if the user doesn't supply
   them.
   """
   @callback listen(:inet.port_number, keyword)
@@ -92,7 +92,7 @@ defmodule Erps.Strategy.Api do
   ssl options passed in (see `c:listen/2`)
   """
   def listen(port, options!) do
-    options! = Enum.reject(options!, &match?({:ssl_opts, _}, &1))
+    options! = Enum.reject(options!, &match?({:tls_opts, _}, &1))
     :gen_tcp.listen(port, options!)
   end
 end
@@ -170,19 +170,19 @@ defmodule Erps.Strategy.OneWayTls do
   @doc """
   (server) opens a TCP port to listen for incoming connection requests.
 
-  Verifies that the ssl options `:cacertfile`, `:certfile`, and `:keyfile` exist
-  under the keyword `:ssl_opts`, and point to existing files (but not the validity
+  Verifies that the tls options `:cacertfile`, `:certfile`, and `:keyfile` exist
+  under the keyword `:tls_opts`, and point to existing files (but not the validity
   of their authority chain or their crytographic signing).
 
   Callback implementation for `c:Erps.Strategy.Api.listen/2`.
   """
   def listen(port, opts) do
-    # perform early basic validation of ssl options.
-    ssl_opts = opts[:ssl_opts]
-    unless ssl_opts, do: raise "ssl options not provided."
-    verify_valid!(ssl_opts, :cacertfile)
-    verify_valid!(ssl_opts, :certfile)
-    verify_valid!(ssl_opts, :keyfile)
+    # perform early basic validation of tls options.
+    tls_opts = opts[:tls_opts]
+    unless tls_opts, do: raise "tls options not provided."
+    verify_valid!(tls_opts, :cacertfile)
+    verify_valid!(tls_opts, :certfile)
+    verify_valid!(tls_opts, :keyfile)
     Api.listen(port, opts)
   end
 
@@ -207,15 +207,15 @@ defmodule Erps.Strategy.OneWayTls do
 
   Callback implementation for `c:Erps.Strategy.Api.upgrade!/2`.
   """
-  def upgrade!(_, nil), do: raise "ssl socket not configured"
-  def upgrade!(socket, ssl_opts) do
+  def upgrade!(_, nil), do: raise "tls socket not configured"
+  def upgrade!(socket, tls_opts) do
     # clients should always verify the identity of the server.
-    with {:ok, ssl_socket} <- :ssl.connect(socket, ssl_opts ++ [verify: :verify_peer, fail_if_no_peer_cert: true]),
-         :ok <- :ssl.setopts(ssl_socket, active: true) do
-         ssl_socket
+    with {:ok, tls_socket} <- :ssl.connect(socket, tls_opts ++ [verify: :verify_peer, fail_if_no_peer_cert: true]),
+         :ok <- :ssl.setopts(tls_socket, active: true) do
+         tls_socket
       else
       _ ->
-        raise "ssl socket upgrade error"
+        raise "tls socket upgrade error"
     end
   end
 
@@ -227,10 +227,10 @@ defmodule Erps.Strategy.OneWayTls do
   Callback implementation for `c:Erps.Strategy.Api.handshake/2`.
   """
   @spec handshake(:inet.socket, keyword) :: {:ok, Api.socket} | {:error, any}
-  def handshake(socket, ssl_opts) do
-    with {:ok, ssl_socket} <- :ssl.handshake(socket, ssl_opts),
-         :ok <- :ssl.setopts(ssl_socket, active: true) do
-      {:ok, ssl_socket}
+  def handshake(socket, tls_opts) do
+    with {:ok, tls_socket} <- :ssl.handshake(socket, tls_opts),
+         :ok <- :ssl.setopts(tls_socket, active: true) do
+      {:ok, tls_socket}
     else
       any ->
         :gen_tcp.close(socket)
@@ -273,20 +273,20 @@ defmodule Erps.Strategy.Tls do
   (server) a specialized function that generates a match function option used to
   verify that the incoming client is bound to a single ip address.
   """
-  def handshake(socket, ssl_opts!) do
-    # instrument in a series of default ssl options into the handshake.
-    ssl_opts! = Keyword.merge([
+  def handshake(socket, tls_opts!) do
+    # instrument in a series of default tls options into the handshake.
+    tls_opts! = Keyword.merge([
       ip_verification_fun: &verify_peer_ip/2,
       verify: :verify_peer,
       fail_if_no_peer_cert: true,
-    ], ssl_opts!)
+    ], tls_opts!)
 
-    with {:ok, ssl_socket} <- :ssl.handshake(socket, ssl_opts!, 200),
-         :ok <- :ssl.setopts(ssl_socket, active: true),
-         {:ok, raw_certificate} <- :ssl.peercert(ssl_socket),
+    with {:ok, tls_socket} <- :ssl.handshake(socket, tls_opts!, 200),
+         :ok <- :ssl.setopts(tls_socket, active: true),
+         {:ok, raw_certificate} <- :ssl.peercert(tls_socket),
          {:ok, cert} <- X509.Certificate.from_der(raw_certificate),
          :ok <- verify_peer_ip(socket, cert) do
-      {:ok, ssl_socket}
+      {:ok, tls_socket}
     else
       any ->
         :gen_tcp.close(socket)

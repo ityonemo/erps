@@ -53,7 +53,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     setup do
       {:ok, server} = Server.start_link(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("server.cert"),
           keyfile:    path("server.key")
@@ -62,7 +62,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       {:ok, client} = Client.start_link(
         port: port,
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("client.cert"),
           keyfile:    path("client.key"),
@@ -101,7 +101,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     test "client can't connect with one way tls", %{port: port, verify: verify} do
       log = capture_log(fn ->
         assert {:error, _} = Client.start(port: port, strategy: Erps.Strategy.OneWayTls,
-          ssl_opts: [cacertfile: path("rootCA.pem")])
+          tls_opts: [cacertfile: path("rootCA.pem")])
         Process.sleep(100)
       end)
 
@@ -110,7 +110,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       verify.()
     end
 
-    test "the client must have ssl options activated", %{port: port} do
+    test "the client must have tls options activated", %{port: port} do
       assert {:error, _} = Client.start(port: port, strategy: Tls)
     end
 
@@ -119,7 +119,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         assert {:error, _} = Client.start(
           port: port,
           strategy: Tls,
-          ssl_opts: [
+          tls_opts: [
             cacertfile: path("wrong-rootCA.pem"),
             certfile:   path("wrong-root.cert"),
             keyfile:    path("wrong-root.key"),
@@ -139,7 +139,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         assert {:error, _} = Client.start(
           port: port,
           strategy: Tls,
-          ssl_opts: [
+          tls_opts: [
             cacertfile: path("rootCA.pem"),
             certfile:   path("wrong-root.cert"),
             keyfile:    path("wrong-root.key"),
@@ -158,7 +158,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       log = capture_log(fn -> assert {:error, _} = Client.start(
         port: port,
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("client.cert"),
           keyfile:    path("wrong-key.key"),
@@ -176,7 +176,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       Client.start(
         port: port,
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("wrong-host.cert"),
           keyfile:    path("wrong-host.key"),
@@ -196,21 +196,21 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
   end
 
   describe "for two way tls with the server certificates" do
-    test "the server must have ssl options provided" do
+    test "the server must have tls options provided" do
       assert {:error, _} = Server.start(self(), strategy: Tls)
     end
 
     test "the server must have a valid cacert file" do
       assert {:error, _} = Server.start(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           certfile:   path("server.cert"),
           keyfile:    path("server.key")
         ])
 
       assert {:error, _} = Server.start(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("not_a_file"),
           certfile:   path("server.cert"),
           keyfile:    path("server.key")
@@ -220,14 +220,14 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     test "the server must have a valid cert file" do
       assert {:error, _} = Server.start(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           keyfile:    path("server.key")
         ])
 
       assert {:error, _} = Server.start(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("not_a_file"),
           keyfile:    path("server.key")
@@ -237,14 +237,14 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     test "the server must have a valid key file" do
       assert {:error, _} = Server.start(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("server.cert")
         ])
 
       assert {:error, _} = Server.start(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("server.cert"),
           keyfile:    path("not_a_file")
@@ -255,7 +255,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     test "client rejects if the server cert is rooted to the wrong root CA" do
       {:ok, server} = Server.start_link(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("wrong-root.cert"),
           keyfile:    path("wrong-root.key")
@@ -266,7 +266,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         assert {:error, _} = Client.start(
           port: port,
           strategy: Tls,
-          ssl_opts: [
+          tls_opts: [
             cacertfile: path("rootCA.pem"),
             certfile:   path("client.cert"),
             keyfile:    path("client.key"),
@@ -281,7 +281,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     test "client rejects if the server has the wrong key" do
       {:ok, server} = Server.start_link(self(),
         strategy: Tls,
-        ssl_opts: [
+        tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("server.cert"),
           keyfile:    path("wrong-key.key")
@@ -292,7 +292,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         assert {:error, _} = Client.start(
           port: port,
           strategy: Tls,
-          ssl_opts: [
+          tls_opts: [
             cacertfile: path("rootCA.pem"),
             certfile:   path("client.cert"),
             keyfile:    path("client.key"),

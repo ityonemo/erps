@@ -51,7 +51,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
   @localhost {127, 0, 0, 1}
 
   def make_server(fun \\ :start_link, opts) do
-    with {:ok, server} <- apply(Server, fun, [self(), [strategy: OneWayTls, ssl_opts: opts]]),
+    with {:ok, server} <- apply(Server, fun, [self(), [strategy: OneWayTls, tls_opts: opts]]),
          {:ok, port} <- Server.port(server) do
       port
     end
@@ -61,7 +61,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
     apply(Client, fun, [[
       port: port,
       strategy: Erps.Strategy.OneWayTls,
-      ssl_opts: [
+      tls_opts: [
         cacertfile: path("rootCA.pem"),
         customize_hostname_check: Tls.single_ip_check(@localhost),
         reuse_sessions: false
@@ -140,7 +140,7 @@ defmodule ErpsTest.TlsTest.OneWayTest do
       assert_receive :foo
     end
 
-    test "the client must have ssl options activated" do
+    test "the client must have tls options activated" do
       port = make_server(
         cacertfile: path("rootCA.pem"),
         certfile:   path("server.cert"),

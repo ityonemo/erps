@@ -27,7 +27,7 @@ defmodule Erps.Client do
     @port <...>
 
     def start_link, do: Erps.Client.start_link(__MODULE__, :ok,
-      server: @hostname, port: @port, ssl_opts: [...])
+      server: @hostname, port: @port, tls_opts: [...])
 
     def init(init_state), do: {:ok, init_state}
   end
@@ -77,7 +77,7 @@ defmodule Erps.Client do
         server: "my_api-server.example.com",
         port: 4747,
         strategy: Erps.Strategy.Tls,
-        ssl_opts: [...])
+        tls_opts: [...])
     end
 
     def init(iv), do: {:ok, iv}
@@ -141,7 +141,7 @@ defmodule Erps.Client do
 
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
     :encode_opts, :hmac_key, :signature, :reconnect, :transport_type,
-    ssl_opts: [],
+    tls_opts: [],
     decode_opts: [safe: true],
     keepalive: @default_keepalive,
     strategy: @default_strategy]
@@ -161,7 +161,7 @@ defmodule Erps.Client do
     signature:      nil | signing_function,
     reconnect:      non_neg_integer,
     transport_type: :tcp | :ssl,
-    ssl_opts:       keyword,
+    tls_opts:       keyword,
     decode_opts:    keyword,
     keepalive:      timeout,
     strategy:       module
@@ -198,7 +198,7 @@ defmodule Erps.Client do
     - `function/0` a zero-arity function which can be used to fetch the key at runtime
     - `binary`     a directly instrumented value (this could be fetched at vm startup time
       and pulled from `System.get_env/1` or `Application.get_env/2`)
-  - `:ssl_opts`  options for setting up a TLS connection.
+  - `:tls_opts`  options for setting up a TLS connection.
     - `:cacertfile` path to the certificate of your signing authority. (required)
     - `:certfile`   path to the server certificate file. (required for `Erps.Strategy.Tls`)
     - `:keyfile`    path to the signing key. (required for `Erps.Strategy.Tls`)
@@ -231,7 +231,7 @@ defmodule Erps.Client do
     |> Keyword.merge(module: module)
 
     with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
-         upgraded <- strategy.upgrade!(socket, state_params[:ssl_opts]) do
+         upgraded <- strategy.upgrade!(socket, state_params[:tls_opts]) do
       Process.send_after(self(), :"$keepalive", state_params[:keepalive])
       start
       |> module.init()
@@ -254,7 +254,7 @@ defmodule Erps.Client do
       _ -> []
     end
 
-    basic_options = Keyword.take(opts, [:ssl_opt,
+    basic_options = Keyword.take(opts, [:tls_opts,
       :safe, :strategy, :reconnect])
     strategy = opts[:strategy] || @default_strategy
 
@@ -354,7 +354,7 @@ defmodule Erps.Client do
   def handle_info(:"$reconnect", state = %{socket: nil, strategy: strategy}) do
     case strategy.connect(state.server, state.port, [:binary, active: true]) do
       {:ok, socket} ->
-        upgraded = strategy.upgrade!(socket, state.ssl_opts)
+        upgraded = strategy.upgrade!(socket, state.tls_opts)
         Process.send_after(self(), :"$keepalive", state.keepalive)
         {:noreply, %{state | socket: upgraded}}
       {:error, :econnrefused} ->
