@@ -133,7 +133,7 @@ defmodule Erps.Client do
   """
   def start_link(module, state, opts) do
     {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    GenServer.start(__MODULE__, {module, state, inner_opts}, gen_server_opts)
+    GenServer.start_link(__MODULE__, {module, state, inner_opts}, gen_server_opts)
   end
 
   @impl true
