@@ -280,8 +280,10 @@ defmodule Erps.Client do
     case attributes[:sign_with] do
       [nil] -> []
       [fun] when is_atom(fun) ->
+        verify_signability!(module, fun, hmac_key)
         [sign_with: &apply(module, fun, [&1, hmac_key])]
       [{mod, fun}] ->
+        verify_signability!(mod, fun, hmac_key)
         [sign_with: &apply(mod, fun, [&1, hmac_key])]
     end
 
@@ -293,6 +295,13 @@ defmodule Erps.Client do
     [base_packet: struct(base_packet, hmac_key: hmac_key),
      encode_opts: encode_options]
     ++ reconnect_option
+  end
+
+  defp verify_signability!(module, function, hmac_key) do
+    function_exported?(module, function, 2) ||
+      raise "#{module}.#{function}/2 not exported; client signing impossible"
+    hmac_key ||
+      raise "hmac key not provided, client signing impossible."
   end
 
   #############################################################################
