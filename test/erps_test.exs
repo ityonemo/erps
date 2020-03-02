@@ -1,7 +1,7 @@
 defmodule ErpsTest do
   use ExUnit.Case, async: true
 
-  defmodule TestClient do
+  defmodule Client do
     use Erps.Client
 
     @localhost {127, 0, 0, 1}
@@ -18,7 +18,7 @@ defmodule ErpsTest do
 
   end
 
-  defmodule TestServer do
+  defmodule Server do
     use Erps.Server
 
     def start_link(state) do
@@ -43,19 +43,42 @@ defmodule ErpsTest do
 
   describe "An Erps server" do
     test "can accept a call" do
-      {:ok, server} = TestServer.start_link(:waiting)
+      {:ok, server} = Server.start_link(:waiting)
       {:ok, port} = Erps.Server.port(server)
-      {:ok, client} = TestClient.start_link(port)
-      assert :pong == TestClient.ping(client)
+      {:ok, client} = Client.start_link(port)
+      assert :pong == Client.ping(client)
     end
 
     test "can accept a mutating cast" do
-      {:ok, server} = TestServer.start_link(:waiting)
+      {:ok, server} = Server.start_link(:waiting)
       {:ok, port} = Erps.Server.port(server)
-      {:ok, client} = TestClient.start_link(port)
-      TestClient.cast(client)
+      {:ok, client} = Client.start_link(port)
+      Client.cast(client)
       Process.sleep(20)
-      assert :casted = TestServer.state(server)
+      assert :casted = Server.state(server)
+    end
+  end
+
+  defmodule ClientVariableServer do
+
+    use Erps.Client
+
+    def start_link(svr, name) do
+      {:ok, port} = Erps.Server.port(svr)
+      Erps.Client.start_link(__MODULE__,
+        :ok, server: name, port: port)
+    end
+
+    @impl true
+    def init(state), do: {:ok, state}
+  end
+
+  describe "a client can be initialized" do
+    test "with a string DNS name" do
+      {:ok, server} = Server.start_link(:waiting)
+      {:ok, client} = ClientVariableServer.start_link(server, "localhost")
+      Process.sleep(20)
+      assert :pong = GenServer.call(client, :ping)
     end
   end
 end

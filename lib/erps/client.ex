@@ -223,7 +223,14 @@ defmodule Erps.Client do
     module_options = get_module_options(module, hmac_key)
 
     port = opts[:port]
-    server = opts[:server]
+    server = case opts[:server] do
+      dns_name when is_binary(dns_name) ->
+        String.to_charlist(dns_name)
+      dns_charlist when is_list(dns_charlist) ->
+        dns_charlist
+      ip_addr when is_tuple(ip_addr) ->
+        ip_addr
+    end
 
     state_params = @default_options
     |> Keyword.merge(module_options)
@@ -259,8 +266,8 @@ defmodule Erps.Client do
     strategy = opts[:strategy] || @default_strategy
 
     adjusted_options = hmac_key_option ++ basic_options ++
-    [ strategy: strategy,
-      transport_type: strategy.transport_type()]
+    [strategy: strategy,
+     transport_type: strategy.transport_type()]
 
     Keyword.merge(opts, adjusted_options)
   end
