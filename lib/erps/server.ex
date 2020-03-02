@@ -47,7 +47,7 @@ defmodule Erps.Server do
   - `:safe` (see `:erlang.binary_to_term/2`), for decoding terms.  If
     set to `false`, then allows undefined atoms and lambdas to be passed
     via the protocol.  This should be used with extreme caution, as
-    disabling safe mode can be an attack vector.
+    disabling safe mode can be an attack vector. (defaults to `true`)
 
   ### Example
 

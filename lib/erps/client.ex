@@ -53,13 +53,19 @@ defmodule Erps.Client do
       emit a 32-byte signature in response.
     - `{external_module, function}` calls `external_module.function/2` in the
       same fashion as above.
+  - `:safe` (see `:erlang.binary_to_term/2`), for decoding terms.  If
+    set to `false`, then allows undefined atoms and lambdas to be passed
+    via the protocol.  This should be used with extreme caution, as
+    disabling safe mode can be an attack vector. (defaults to `true`)
+
 
   ### Example
   ```
   defmodule MyClient do
     use Erps.Client, version: "0.2.4",
-                     identifier: "my_api"
-                     sign_with: :signing
+                     identifier: "my_api",
+                     sign_with: :signing,
+                     safe: false
 
     def signing(binary, hmac_key) do
       :crypto.mac(:hmac, :sha256, SecretProvider.secret_for(hmac_key), binary)
@@ -136,6 +142,7 @@ defmodule Erps.Client do
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
     :encode_opts, :hmac_key, :signature, :reconnect, :packet_type,
     ssl_opts: [],
+    decode_opts: [safe: true],
     keepalive: @default_keepalive,
     strategy: @default_strategy]
 
@@ -155,6 +162,7 @@ defmodule Erps.Client do
     reconnect:   non_neg_integer,
     packet_type: :tcp | :ssl,
     ssl_opts:    keyword,
+    decode_opts: keyword,
     keepalive:   timeout,
     strategy:    module
   }
@@ -238,13 +246,15 @@ defmodule Erps.Client do
       [mod_reconnect] -> opts[:reconnect] || mod_reconnect
     end
 
+    decode_opts = if safe = opts[:safe], do: [safe: safe], else: []
+
     base_options = Keyword.merge(opts, [
       module: module,
       base_packet: struct(base_packet, hmac_key_opt),
       encode_opts: encode_opts,
       reconnect: reconnect,
       strategy: strategy,
-      packet_type: strategy.packet_type()])
+      packet_type: strategy.packet_type()] ++ decode_opts)
 
     with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
          upgraded <- strategy.upgrade!(socket, ssl_opts) do
@@ -289,11 +299,7 @@ defmodule Erps.Client do
 
   @impl true
   def handle_info({ptype, socket, data}, state = %{socket: socket, packet_type: ptype})do
-
-    # NB: currently, we're trusting the RPS server to not send us malicious
-    # or unverified content.  This may change in the future.
-
-    case Packet.decode(data) do
+    case Packet.decode(data, state.decode_opts) do
       {:error, error} ->
         Logger.error(error)
         {:noreply, state}
