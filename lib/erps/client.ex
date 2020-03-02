@@ -210,66 +210,82 @@ defmodule Erps.Client do
     GenServer.start_link(__MODULE__, {module, state, inner_opts}, gen_server_opts)
   end
 
+  @default_options [
+    keepalive: @default_keepalive,
+    reconnect: @default_reconnect]
+
   @impl true
   def init({module, start, opts}) do
+    instance_options = get_instance_options(opts)
+    hmac_key = instance_options[:hmac_key]
+    strategy = instance_options[:strategy]
+
+    module_options = get_module_options(module, hmac_key)
+
     port = opts[:port]
     server = opts[:server]
 
-    attributes = module.__info__(:attributes)
-    [sign_with] = attributes[:sign_with]
+    state_params = @default_options
+    |> Keyword.merge(module_options)
+    |> Keyword.merge(instance_options)
+    |> Keyword.merge(module: module)
 
-    hmac_key_opt = case opts[:hmac_key] do
+    with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
+         upgraded <- strategy.upgrade!(socket, state_params[:ssl_opts]) do
+      Process.send_after(self(), :"$keepalive", state_params[:keepalive])
+      start
+      |> module.init()
+      |> process_init(state_params ++ [socket: upgraded])
+    else
+      {:error, :econnrefused} ->
+        # send a reconnect message back to the process.
+        Process.send_after(self(), :"$reconnect", state_params[:reconnect])
+        start
+        |> module.init()
+        |> process_init(state_params ++ [socket: nil])
+    end
+  end
+
+  defp get_instance_options(opts) do
+    hmac_key_option = case opts[:hmac_key] do
       function when is_function(function, 0) ->
         [hmac_key: function.()]
       binary when is_binary(binary) -> [hmac_key: binary]
       _ -> []
     end
 
-    [base_packet] = attributes[:base_packet]
-
-    # this is janky AF.  fix it.
-    encode_opts = attributes[:encode_opts] ++
-    case sign_with do
-      nil -> []
-      fun when is_atom(fun) ->
-        [sign_with: &apply(module, fun, [&1, hmac_key_opt[:hmac_key]])]
-      {mod, fun} ->
-        [sign_with: &apply(mod, fun, [&1, hmac_key_opt[:hmac_key]])]
-    end
-
-    ssl_opts = opts[:ssl_opts] || []
-    keepalive = opts[:keepalive] || @default_keepalive
+    basic_options = Keyword.take(opts, [:ssl_opt,
+      :safe, :strategy, :reconnect])
     strategy = opts[:strategy] || @default_strategy
 
-    reconnect = case module.__info__(:attributes)[:reconnect] do
-      [nil] -> opts[:reconnect] || @default_reconnect
-      [mod_reconnect] -> opts[:reconnect] || mod_reconnect
+    adjusted_options = hmac_key_option ++ basic_options ++
+    [ strategy: strategy,
+      transport_type: strategy.transport_type()]
+
+    Keyword.merge(opts, adjusted_options)
+  end
+
+  defp get_module_options(module, hmac_key) do
+    attributes = module.__info__(:attributes)
+    [base_packet] = attributes[:base_packet]
+
+    encode_options = attributes[:encode_opts] ++
+    case attributes[:sign_with] do
+      [nil] -> []
+      [fun] when is_atom(fun) ->
+        [sign_with: &apply(module, fun, [&1, hmac_key])]
+      [{mod, fun}] ->
+        [sign_with: &apply(mod, fun, [&1, hmac_key])]
     end
 
-    decode_opts = if safe = opts[:safe], do: [safe: safe], else: []
-
-    base_options = Keyword.merge(opts, [
-      module: module,
-      base_packet: struct(base_packet, hmac_key_opt),
-      encode_opts: encode_opts,
-      reconnect: reconnect,
-      strategy: strategy,
-      transport_type: strategy.transport_type()] ++ decode_opts)
-
-    with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
-         upgraded <- strategy.upgrade!(socket, ssl_opts) do
-      Process.send_after(self(), :"$keepalive", keepalive)
-      start
-      |> module.init()
-      |> process_init(base_options ++ [socket: upgraded])
-    else
-      {:error, :econnrefused} ->
-        # send a reconnect message back to the process.
-        Process.send_after(self(), :"$reconnect", reconnect)
-        start
-        |> module.init()
-        |> process_init(base_options ++ [socket: nil])
+    reconnect_option = case module.__info__(:attributes)[:reconnect] do
+      [nil] -> []
+      [mod_reconnect] -> [reconnect: mod_reconnect]
     end
+
+    [base_packet: struct(base_packet, hmac_key: hmac_key),
+     encode_opts: encode_options]
+    ++ reconnect_option
   end
 
   #############################################################################

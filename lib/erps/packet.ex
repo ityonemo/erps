@@ -163,7 +163,7 @@ defmodule Erps.Packet do
   def encode(packet = %__MODULE__{}, opts) do
     type_code = @type_to_code[packet.type]
     padded_id = pad(packet.identifier)
-    hmac_key = packet.hmac_key
+    hmac_key = packet.hmac_key || @empty_key
     version = packet.version
 
     payload_binary = if opts[:compressed] do
