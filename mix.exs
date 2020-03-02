@@ -9,8 +9,11 @@ defmodule Erps.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      files: ~w(lib mix.exs README* LICENSE* VERSIONS*),
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [coveralls: :test, "coveralls.detail": :test, "coveralls.post": :test, "coveralls.html": :test]
+      preferred_cli_env: [coveralls: :test, "coveralls.detail": :test, "coveralls.post": :test, "coveralls.html": :test],
+      package: package(),
+      source_url: "https://github.com/ityonemo/erps/",
     ]
   end
 
@@ -30,4 +33,10 @@ defmodule Erps.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp package, do: [
+    name: "Erps",
+    licenses: ["MIT"],
+    links: %{"GitHub" => "https://github.com/ityonemo/erps"}
+  ]
 end

@@ -33,8 +33,8 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
     end
 
     @impl true
-    def handle_continue(value, test_pid) do
-      send(test_pid, value)
+    def handle_continue(continue, test_pid) do
+      send(test_pid, continue)
       {:noreply, test_pid}
     end
 

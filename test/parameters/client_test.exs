@@ -204,9 +204,9 @@ defmodule ErpsTest.Parameters.ClientTest do
     @localhost {127, 0, 0, 1}
 
     defmodule Remote do
-      @hmac_fn_value fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
+      @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
 
-      def key, do: @hmac_fn_value
+      def key, do: @hmac_key
     end
 
     use Erps.Client, sign_with: :signature
@@ -264,7 +264,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
   describe "when the client is instrumented with signature" do
     @tag :one
-    test "it looks for local @hmac_key value", %{port: port} do
+    test "it looks for local @hmac_key", %{port: port} do
       {:ok, client} = ClientSignatureLocal.start_link(port)
       GenServer.cast(client, :foo)
       assert_receive {:tcp, _, signed_data}

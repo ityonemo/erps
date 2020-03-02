@@ -15,7 +15,7 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     end
 
     @impl true
-    def init(val), do: {:ok, val}
+    def init(state), do: {:ok, state}
 
     def reply(srv, to_whom, what) do
       GenServer.call(srv, {:reply, to_whom, what})
@@ -33,27 +33,27 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
     end
 
     # instrumentable responses
-    def handle_call(val, from, test_pid) do
+    def handle_call(call, from, test_pid) do
       # wait for an instumented response.
-      send(test_pid, {:called, from, val})
+      send(test_pid, {:called, from, call})
       receive do any when any != :accept -> any end
     end
     @impl true
-    def handle_cast(val, test_pid) do
+    def handle_cast(cast, test_pid) do
       # wait for an instumented response.
-      send(test_pid, {:casted, val})
+      send(test_pid, {:casted, cast})
       receive do any when any != :accept -> any end
     end
     @impl true
-    def handle_info(val, test_pid) do
+    def handle_info(info, test_pid) do
       # wait for an instrumented response
-      send(test_pid, {:sent, val})
+      send(test_pid, {:sent, info})
       receive do any when any != :accept -> any end
     end
 
     @impl true
-    def handle_continue(value, test_pid) do
-      send(test_pid, value)
+    def handle_continue(continue, test_pid) do
+      send(test_pid, continue)
       {:noreply, test_pid}
     end
   end
@@ -126,7 +126,7 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
         try do
           GenServer.call(server, :foo)
         catch
-          :exit, _value -> :died
+          :exit, _reason -> :died
         end
       end)
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end

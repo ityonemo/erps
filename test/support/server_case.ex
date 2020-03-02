@@ -24,8 +24,8 @@ defmodule ErpsTest.ServerCase do
         end
         def init(test_pid), do: {:ok, test_pid}
 
-        def handle_push(val, test_pid) do
-          send(test_pid, val)
+        def handle_push(push, test_pid) do
+          send(test_pid, push)
           {:noreply, test_pid}
         end
 

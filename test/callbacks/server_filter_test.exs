@@ -24,8 +24,8 @@ defmodule ErpsTest.Callbacks.ServerFilterTest do
     end
 
     @impl true
-    def filter({:double, value}, :call), do: value != 42
-    def filter({:sendme, value}, :cast), do: value != 0
+    def filter({:double, number}, :call), do: number != 42
+    def filter({:sendme, number}, :cast), do: number != 0
   end
 
   defmodule DoublerClient do

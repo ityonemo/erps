@@ -20,7 +20,7 @@ defmodule ErpsTest.Callbacks.ClientTest do
     end
 
     @impl true
-    def init(val), do: {:ok, val}
+    def init(state), do: {:ok, state}
 
     @impl true
     def handle_push(msg, state) do

@@ -14,8 +14,8 @@ defmodule ErpsTest.ClientCase do
       defmodule Server do
         use Erps.Server
 
-        def start_link(val), do: Erps.Server.start_link(__MODULE__, val, [])
-        def init(val), do: {:ok, val}
+        def start_link(state), do: Erps.Server.start_link(__MODULE__, state, [])
+        def init(state), do: {:ok, state}
       end
     end
   end

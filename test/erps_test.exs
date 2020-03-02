@@ -10,7 +10,7 @@ defmodule ErpsTest do
       Erps.Client.start_link(__MODULE__, :ok, server: @localhost, port: port)
     end
 
-    def init(val), do: {:ok, val}
+    def init(initial_state), do: {:ok, initial_state}
 
     def ping(srv), do: GenServer.call(srv, :ping)
 

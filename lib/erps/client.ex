@@ -304,9 +304,9 @@ defmodule Erps.Client do
   @impl true
   @spec handle_call(call :: term, GenServer.from, state) :: reply_response
   def handle_call(_, _, state = %{socket: nil}), do: {:noreply, state}
-  def handle_call(val, from, state = %{strategy: strategy}) do
+  def handle_call(call, from, state = %{strategy: strategy}) do
     tcp_data = state.base_packet
-    |> struct(type: :call, payload: {from, val})
+    |> struct(type: :call, payload: {from, call})
     |> Packet.encode(state.encode_opts)
 
     strategy.send(state.socket, tcp_data)
@@ -316,10 +316,10 @@ defmodule Erps.Client do
   @impl true
   @spec handle_cast(cast :: term, state) :: noreply_response
   def handle_cast(_, state = %{socket: nil}), do: {:noreply, state}
-  def handle_cast(val, state = %{strategy: strategy}) do
+  def handle_cast(cast, state = %{strategy: strategy}) do
     #instrument data into the packet and convert to binary.
     tcp_data = state.base_packet
-    |> struct(type: :cast, payload: val)
+    |> struct(type: :cast, payload: cast)
     |> Packet.encode(state.encode_opts)
 
     strategy.send(state.socket, tcp_data)
