@@ -6,10 +6,10 @@ defmodule Erps.MixProject do
       app: :erps,
       version: "0.1.0",
       elixir: "~> 1.10",
+      description: "TLS-based remote protocol (call/cast) server",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      files: ~w(lib mix.exs README* LICENSE* VERSIONS*),
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [coveralls: :test, "coveralls.detail": :test, "coveralls.post": :test, "coveralls.html": :test],
       package: package(),
@@ -35,8 +35,9 @@ defmodule Erps.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp package, do: [
-    name: "Erps",
+    name: "erps",
     licenses: ["MIT"],
+    files: ~w(lib mix.exs README* LICENSE* VERSIONS* diagram.svg),
     links: %{"GitHub" => "https://github.com/ityonemo/erps"}
   ]
 end

@@ -2,7 +2,7 @@
 
 ## TLS-based Remote Protocol Server
 
-![rpc diagram](drawing.svg)
+![rps diagram](diagram.svg)
 
 ## Installation
 

@@ -4,7 +4,7 @@ defmodule ErpsTest.CompileTimeTest do
   #
   use ExUnit.Case, async: true
 
-  describe "if the remote procedure identifier is too long" do
+  describe "if the identifier is too long" do
     test "the server fails to compile" do
       assert_raise CompileError, fn ->
         __ENV__.file
