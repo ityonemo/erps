@@ -85,7 +85,7 @@ defmodule Erps.Strategy.Api do
   (both) provides a hint to `c:GenServer.handle_info/2` as to what sorts of
   active packet messages to expect.
   """
-  @callback packet_type() :: :tcp | :ssl
+  @callback transport_type() :: :tcp | :ssl
 
   @doc """
   a generic "listen" which calls `:gen_tcp.listen/2` that filters out any
@@ -144,8 +144,8 @@ defmodule Erps.Strategy.Tcp do
   end
 
   @impl true
-  @spec packet_type :: :tcp
-  def packet_type, do: :tcp
+  @spec transport_type :: :tcp
+  def transport_type, do: :tcp
 end
 
 defmodule Erps.Strategy.OneWayTls do
@@ -239,8 +239,8 @@ defmodule Erps.Strategy.OneWayTls do
   end
 
   @impl true
-  @spec packet_type :: :ssl
-  def packet_type, do: :ssl
+  @spec transport_type :: :ssl
+  def transport_type, do: :ssl
 end
 
 defmodule Erps.Strategy.Tls do
@@ -294,8 +294,8 @@ defmodule Erps.Strategy.Tls do
   end
 
   @impl true
-  @spec packet_type :: :ssl
-  def packet_type, do: :ssl
+  @spec transport_type :: :ssl
+  def transport_type, do: :ssl
 
   defp match_function({:ip, ip}, {:dNSName, _}, ip), do: true
   defp match_function(_, _, _), do: false

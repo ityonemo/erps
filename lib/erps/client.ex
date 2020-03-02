@@ -140,7 +140,7 @@ defmodule Erps.Client do
   @default_keepalive 60_000
 
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
-    :encode_opts, :hmac_key, :signature, :reconnect, :packet_type,
+    :encode_opts, :hmac_key, :signature, :reconnect, :transport_type,
     ssl_opts: [],
     decode_opts: [safe: true],
     keepalive: @default_keepalive,
@@ -150,21 +150,21 @@ defmodule Erps.Client do
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
 
   @typep state :: %__MODULE__{
-    module:      module,
-    socket:      nil | :gen_tcp.socket,
-    server:      :inet.address,
-    port:        :inet.port_number,
-    data:        term,
-    base_packet: Packet.t,
-    encode_opts: list,
-    hmac_key:    nil | hmac_function,
-    signature:   nil | signing_function,
-    reconnect:   non_neg_integer,
-    packet_type: :tcp | :ssl,
-    ssl_opts:    keyword,
-    decode_opts: keyword,
-    keepalive:   timeout,
-    strategy:    module
+    module:         module,
+    socket:         nil | Erps.socket,
+    server:         :inet.address,
+    port:           :inet.port_number,
+    data:           term,
+    base_packet:    Packet.t,
+    encode_opts:    list,
+    hmac_key:       nil | hmac_function,
+    signature:      nil | signing_function,
+    reconnect:      non_neg_integer,
+    transport_type: :tcp | :ssl,
+    ssl_opts:       keyword,
+    decode_opts:    keyword,
+    keepalive:      timeout,
+    strategy:       module
   }
 
   require Logger
@@ -254,7 +254,7 @@ defmodule Erps.Client do
       encode_opts: encode_opts,
       reconnect: reconnect,
       strategy: strategy,
-      packet_type: strategy.packet_type()] ++ decode_opts)
+      transport_type: strategy.transport_type()] ++ decode_opts)
 
     with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
          upgraded <- strategy.upgrade!(socket, ssl_opts) do
@@ -298,7 +298,7 @@ defmodule Erps.Client do
   @closed [:tcp_closed, :ssl_closed]
 
   @impl true
-  def handle_info({ptype, socket, data}, state = %{socket: socket, packet_type: ptype})do
+  def handle_info({ttype, socket, data}, state = %{socket: socket, transport_type: ttype})do
     case Packet.decode(data, state.decode_opts) do
       {:error, error} ->
         Logger.error(error)

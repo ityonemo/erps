@@ -15,7 +15,11 @@ defmodule Erps.Server do
   defmodule ErpsServer do
     use Erps.Server
 
-    def start_link, do: Erps.Server.start_link(__MODULE__, :ok, ssl_opts: [...])
+    @port <...>
+
+    def start_link, do: Erps.Server.start_link(__MODULE__, :ok,
+      port: @port,
+      ssl_opts: [...])
 
     @impl true
     def init(init_state), do: {:ok, init_state}
@@ -108,12 +112,22 @@ defmodule Erps.Server do
     end
   end
 
-  defstruct [:module, :data, :port, :socket, :decode_opts, :filter, :packet_type,
+  defstruct [:module, :data, :port, :socket, :decode_opts, :filter, :transport_type,
     ssl_opts: [],
     strategy: @default_strategy,
     connections: []]
 
-  @typep state :: %__MODULE__{}
+  @typep filter_fn :: (Packet.type, term -> boolean)
+
+  @typep state :: %__MODULE__{
+    module:      module,
+    data:        term,
+    port:        :inet.port_number,
+    socket:      :inet.socket,
+    decode_opts: keyword,
+    filter:      filter_fn
+
+  }
 
   @behaviour GenServer
 
@@ -189,7 +203,8 @@ defmodule Erps.Server do
       {:ok, socket} ->
         server_opts = Keyword.merge(opts,
           module: module, port: port, socket: socket, decode_opts: decode_opts,
-          filter: filter, strategy: strategy, packet_type: strategy.packet_type())
+          filter: filter, strategy: strategy,
+          transport_type: strategy.transport_type())
 
         # kick off the accept loop.
         Process.send_after(self(), :accept, 0)
@@ -206,8 +221,6 @@ defmodule Erps.Server do
 
   # convenience type that lets us annotate internal call reply types sane.
   @typep reply(type) :: {:reply, type, state}
-
-  @type socket :: :inet.socket | :ssl.socket
 
   @type server :: GenServer.server
 
@@ -228,9 +241,9 @@ defmodule Erps.Server do
   queries the server to retrieve a list of all clients that are connected
   to the server.
   """
-  @spec connections(server) :: [socket]
+  @spec connections(server) :: [Erps.socket]
   def connections(srv), do: GenServer.call(srv, :"$connections")
-  @spec connections_impl(state) :: reply([socket])
+  @spec connections_impl(state) :: reply([Erps.socket])
   defp connections_impl(state) do
     {:reply, state.connections, state}
   end
@@ -241,9 +254,9 @@ defmodule Erps.Server do
   returns `{:error, :enoent}` if the connection is not in its list of active
   connections.
   """
-  @spec disconnect(server, socket) :: :ok | {:error, :enoent}
+  @spec disconnect(server, Erps.socket) :: :ok | {:error, :enoent}
   def disconnect(srv, socket), do: GenServer.call(srv, {:"$disconnect", socket})
-  @spec disconnect_impl(socket, state) :: reply(:ok | {:error, :enoent})
+  @spec disconnect_impl(Erps.socket, state) :: reply(:ok | {:error, :enoent})
   defp disconnect_impl(socket, state = %{connections: connections}) do
     if socket in connections do
       :gen_tcp.close(socket)
@@ -327,8 +340,8 @@ defmodule Erps.Server do
       _any -> {:noreply, state}
     end
   end
-  def handle_info({ptype, socket, bin_data},
-      state = %{module: module, filter: filter, strategy: strategy, packet_type: ptype}) do
+  def handle_info({ttype, socket, bin_data},
+      state = %{module: module, filter: filter, strategy: strategy, transport_type: ttype}) do
 
     case Packet.decode(bin_data, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
