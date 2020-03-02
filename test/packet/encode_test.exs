@@ -63,8 +63,8 @@ defmodule ErpsTest.Packet.EncodeTest do
     end
 
     test "identifier is encoded" do
-      assert {:ok, %Packet{identifier: "my_rpc"}} =
-        %Packet{type: :call, identifier: "my_rpc"}
+      assert {:ok, %Packet{identifier: "identifier"}} =
+        %Packet{type: :call, identifier: "identifier"}
         |> Packet.encode
         |> Packet.decode
     end

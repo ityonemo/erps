@@ -1,6 +1,41 @@
 defmodule Erps.Client do
-
   @moduledoc """
+
+  Create an Erps client GenServer.
+
+  The best way to think of an Erps client is that it is a GenServer that forwards
+  its `call/2` and `cast/2` callbacks to a remote GenServer over a LAN or WAN.
+  This callbacks would normally be provided by standard `GenServer.call/2` and
+  `GenServer.cast/2` semantics over erlang distribution but in some cases you may
+  want to issue a remote protocol request over high-latency or unreliable network
+  stretches, or in cases where you would like to have an OTP-supervised connection
+  orthogonal to standard erlang distribution semantics.
+
+  ## Basic operation
+
+  Presuming you have set up an Erps server GenServer on some host at `@hostname`,
+  you can connect the client and the server simply by instantiating the server
+  module.
+
+  ### Example
+
+  ```
+  defmodule ErpsClient do
+    use Erps.Client
+
+    @hostname <...>
+    @port <...>
+
+    def start_link, do: Erps.Client.start_link(__MODULE__, :ok,
+      server: @hostname, port: @port, ssl_opts: [...])
+
+    def init(init_state), do: {:ok, init_state}
+  end
+
+  {:ok, client} = ErpsClient.start_link
+  GenServer.call(client, :some_remote_call)
+  # => :some_remote_response
+  ```
 
   ## Module options
   - `:version` the version of your Erps API messages.  Should be a SemVer string.
@@ -10,11 +45,38 @@ defmodule Erps.Client do
   - `:sign_with` defines the cryptographic signing function for your Erps
     client/server pair.  May take one of two forms:
     - `function` (where `function` is an atom) calls the signing function
-      `module.function/2` with the unsigned binary, expecting a 32-byte hmac
-      signature as a result.
-    - `{external_module, function}` calls `external_module.function/2` with a
-      first parameter of the binary, and the second parameter of the hmac key.
-  -
+      `module.function/2` with the unsigned binary as the first parameter, and
+      the `hmac_key` (see `start_link/3` options) as the second parameter.
+      The `hmac_key` is passed to the function in the event that the client
+      has a KV store which should be queried to find the appropriate signing
+      key for the requested connection instance.  `module.function/2` should
+      emit a 32-byte signature in response.
+    - `{external_module, function}` calls `external_module.function/2` in the
+      same fashion as above.
+
+  ### Example
+  ```
+  defmodule MyClient do
+    use Erps.Client, version: "0.2.4",
+                     identifier: "my_api"
+                     sign_with: :signing
+
+    def signing(binary, hmac_key) do
+      :crypto.mac(:hmac, :sha256, SecretProvider.secret_for(hmac_key), binary)
+    end
+
+    def start_link(iv) do
+      Erps.Client.start_link(__MODULE__, init,
+        hmac_key: "ABCDEFGHIJKLMNOP",
+        server: "my_api-server.example.com",
+        port: 4747,
+        strategy: Erps.Strategy.Tls,
+        ssl_opts: [...])
+    end
+
+    def init(iv), do: {:ok, iv}
+  end
+  ```
   """
 
   @behaviour GenServer
@@ -120,10 +182,14 @@ defmodule Erps.Client do
 
   ### options
 
-  - `:server`    IP address of the target server (required)
-  - `:port`      IP port of the target server (required)
-  - `:strategy`  module for communication transport strategy
-  - `:keepalive` time interval for sending a TCP/IP keepalive token.
+  - `:server`      IP address of the target server (required)
+  - `:port`        IP port of the target server (required)
+  - `:strategy`    module for communication transport strategy
+  - `:keepalive`   time interval for sending a TCP/IP keepalive token.
+  - `:hmac_key`    one of two options:
+    - `function/0` a zero-arity function which can be used to fetch the key at runtime
+    - `binary`     a directly instrumented value (this could be fetched at vm startup time
+      and pulled from `System.get_env/1` or `Application.get_env/2`)
   - `:ssl_opts`  options for setting up a TLS connection.
     - `:cacertfile` path to the certificate of your signing authority. (required)
     - `:certfile`   path to the server certificate file. (required for `Erps.Strategy.Tls`)

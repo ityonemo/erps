@@ -5,9 +5,9 @@ defmodule Erps.Packet do
   #
   # bytes
   #
-  # |  1   | 2     4 | 5           16 | 17          31 | 32     64 | 65        96 | 97  ...
-  # |------|---------|----------------|----------------|-----------|--------------|---------
-  # | type | version | rpc identifier | HMAC key       | signature | payload size | payload
+  # |  1   | 2     4 | 5       16 | 17          31 | 32     64 | 65        96 | 97  ...
+  # |------|---------|------------|----------------|-----------|--------------|---------
+  # | type | version | identifier | HMAC key       | signature | payload size | payload
 
   defstruct [
     type:         :keepalive,
@@ -74,9 +74,9 @@ defmodule Erps.Packet do
     end
 
     cond do
-      # verify that we are doing the same rpc.
+      # verify that we are using the same remote protocol.
       identifier_mismatches?(srv_identifier, pkt_identifier) ->
-        {:error, "wrong rpc"}
+        {:error, "wrong identifier"}
       # verify that we are using an acceptable version
       version_mismatches?(version_req, %Version{major: v1, minor: v2, patch: v3, pre: []}) ->
         {:error, "incompatible version"}

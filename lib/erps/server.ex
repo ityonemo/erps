@@ -1,5 +1,74 @@
 defmodule Erps.Server do
 
+  @moduledoc """
+  Create an Erps server GenServer.
+
+  An Erps server is just a GenServer that has its `call/2` and `cast/2` callbacks
+  connected to the external network over a transport portocol.
+
+  ## Basic Operation
+
+  Presuming you have set up SSL/TLS credentials, you can instantiate a server
+  in basically the same way that you would instantiate a GenServer:
+
+  ```
+  defmodule ErpsServer do
+    use Erps.Server
+
+    def start_link, do: Erps.Server.start_link(__MODULE__, :ok, ssl_opts: [...])
+
+    @impl true
+    def init(init_state), do: {:ok, init_state}
+
+    def handle_call(:some_remote_call, state) do
+      {:reply, :some_remote_response, state}
+    end
+  end
+  ```
+
+  Now you may either access these values as a normal, local
+  GenServer, or access them via `Erps.Client` (see documentation)
+  for the implementation.
+
+  ```
+  {:ok, server} = ErpsServer.start_link()
+  GenServer.call(server, :some_remote_call) #==> :some_remote_response
+
+  {:ok, client} = ErpsClient.start_link()
+  GenServer.call(client, :some_remote_call) #==> :some_remote_response
+  ```
+
+  ## Module Options
+
+  - `:identifier` a binary identifier for your Erps API endpoint.  Maximum 12
+    bytes, suggested to be human-readable.
+  - `:versions` client semvers which are accepted.  See the "requirements"
+    section in `Version`.
+  - `:safe` (see `:erlang.binary_to_term/2`), for decoding terms.  If
+    set to `false`, then allows undefined atoms and lambdas to be passed
+    via the protocol.  This should be used with extreme caution, as
+    disabling safe mode can be an attack vector.
+
+  ### Example
+
+  ```
+  defmodule MyServer do
+    use Erps.Server, versions: " ~> 0.2.4",
+                     identifier: "my_api",
+                     safe: false
+
+    def start_link(iv) do
+      Erps.Client.start_link(__MODULE__, init,
+        strategy: Erps.Strategy.Tls,
+        ssl_opts: [...])
+    end
+
+    def init(iv), do: {:ok, iv}
+  end
+  ```
+
+  """
+
   if Mix.env() in [:dev, :test] do
     @default_strategy Erps.Strategy.Tcp
   else
@@ -7,8 +76,12 @@ defmodule Erps.Server do
   end
 
   defmacro __using__(opts) do
+    safe = if opts[:safe] == false, do: false, else: true
 
-    decode_opts = Keyword.take(opts, [:identifier, :versions, :safe])
+    decode_opts = opts
+    |> Keyword.take([:identifier, :versions])
+    |> Keyword.put(:safe, safe)
+
     verification = opts[:verification]
 
     Module.register_attribute(__CALLER__.module, :decode_opts, persist: true)

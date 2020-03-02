@@ -15,7 +15,7 @@ defmodule ErpsTest.Packet.DecodeTest do
     end
   end
 
-  describe "when filtering based on rpc identifier" do
+  describe "when filtering based on identifier" do
     test "identifiers decode" do
       assert {:ok, %Packet{type: :call, identifier: "foo", payload: []}} =
         Packet.decode(<<4, 0::24, "foo", 0::(9 * 8), 0::(48 * 8), 2::32, @simplest_payload>>)
