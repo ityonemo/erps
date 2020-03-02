@@ -71,6 +71,17 @@ defmodule Erps.Server do
   end
   ```
 
+  ### Magical featurues
+
+  The following functions are hoisted to your server module
+  so that you can call them in your code with clarity and less
+  boilerplate:
+
+  - `port/1`
+  - `push/2`
+  - `connections/1`
+  - `disconnect/2`
+
   """
 
   if Mix.env() in [:dev, :test] do
@@ -102,10 +113,10 @@ defmodule Erps.Server do
       @behaviour Erps.Server
 
       # define a set of "magic functions".
-      def port(srv), do: Erps.Server.port(srv)
-      def push(srv, push), do: Erps.Server.push(srv, push)
-      def connections(srv), do: Erps.Server.connections(srv)
-      def disconnect(srv, port), do: Erps.Server.disconnect(srv, port)
+      defdelegate port(srv), to: Erps.Server
+      defdelegate push(srv, push), to: Erps.Server
+      defdelegate connections(srv), to: Erps.Server
+      defdelegate disconnect(srv, port), to: Erps.Server
 
       @decode_opts unquote(decode_opts)
       @verification unquote(verification)
