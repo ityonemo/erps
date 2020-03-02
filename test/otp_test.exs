@@ -99,7 +99,6 @@ defmodule ErpsTest.OtpTest do
       assert_receive :ping
     end
 
-    @tag :one
     test "has the connection reestablish if both sides die" do
       port = Enum.random(10_000..30_000)
       test_pid = self()

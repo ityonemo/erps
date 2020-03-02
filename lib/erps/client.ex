@@ -1,5 +1,22 @@
 defmodule Erps.Client do
 
+  @moduledoc """
+
+  ## Module options
+  - `:version` the version of your Erps API messages.  Should be a SemVer string.
+    see `Version` for more information.
+  - `:identifier` a binary identifier for your Erps API endpoint.  Maximum 12
+    bytes, suggested to be human-readable.
+  - `:sign_with` defines the cryptographic signing function for your Erps
+    client/server pair.  May take one of two forms:
+    - `function` (where `function` is an atom) calls the signing function
+      `module.function/2` with the unsigned binary, expecting a 32-byte hmac
+      signature as a result.
+    - `{external_module, function}` calls `external_module.function/2` with a
+      first parameter of the binary, and the second parameter of the hmac key.
+  -
+  """
+
   @behaviour GenServer
 
   @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
@@ -37,7 +54,6 @@ defmodule Erps.Client do
 
     Module.register_attribute(__CALLER__.module, :base_packet, persist: true)
     Module.register_attribute(__CALLER__.module, :encode_opts, persist: true)
-    Module.register_attribute(__CALLER__.module, :hmac_key,    persist: true)
     Module.register_attribute(__CALLER__.module, :sign_with,   persist: true)
     Module.register_attribute(__CALLER__.module, :reconnect,   persist: true)
 
@@ -83,14 +99,16 @@ defmodule Erps.Client do
 
   require Logger
 
+  @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after]
+
   @doc """
   starts a client GenServer, not linked to the caller. Most useful for tests.
 
   see `start_link/3` for a description of avaliable options.
   """
   def start(module, state, opts) do
-    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts, :keepalive])
-    GenServer.start(__MODULE__, {module, state, inner_opts}, opts)
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    GenServer.start(__MODULE__, {module, state, inner_opts}, gen_server_opts)
   end
 
   @doc """
@@ -114,8 +132,8 @@ defmodule Erps.Client do
   see `GenServer.start_link/3` for a description of further options.
   """
   def start_link(module, state, opts) do
-    inner_opts = Keyword.take(opts, [:server, :port, :strategy, :ssl_opts, :keepalive])
-    GenServer.start_link(__MODULE__, {module, state, inner_opts}, opts)
+    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
+    GenServer.start(__MODULE__, {module, state, inner_opts}, gen_server_opts)
   end
 
   @impl true
@@ -126,24 +144,23 @@ defmodule Erps.Client do
     attributes = module.__info__(:attributes)
     [sign_with] = attributes[:sign_with]
 
-    hmac_key = case attributes[:hmac_key] do
-      [string] when is_binary(string) -> string
-      [atom] when is_atom(atom) ->
-        apply(module, atom, [])
-      [{mod, fun}] ->
-        apply(mod, fun, [])
-      _ -> <<0::16 * 8>>
+    hmac_key_opt = case opts[:hmac_key] do
+      function when is_function(function, 0) ->
+        [hmac_key: function.()]
+      binary when is_binary(binary) -> [hmac_key: binary]
+      _ -> []
     end
 
     [base_packet] = attributes[:base_packet]
 
+    # this is janky AF.  fix it.
     encode_opts = attributes[:encode_opts] ++
     case sign_with do
       nil -> []
       fun when is_atom(fun) ->
-        [sign_with: &apply(module, fun, [&1])]
+        [sign_with: &apply(module, fun, [&1, hmac_key_opt[:hmac_key]])]
       {mod, fun} ->
-        [sign_with: &apply(mod, fun, [&1, hmac_key])]
+        [sign_with: &apply(mod, fun, [&1, hmac_key_opt[:hmac_key]])]
     end
 
     ssl_opts = opts[:ssl_opts] || []
@@ -157,7 +174,7 @@ defmodule Erps.Client do
 
     base_options = Keyword.merge(opts, [
       module: module,
-      base_packet: struct(base_packet, hmac_key: hmac_key),
+      base_packet: struct(base_packet, hmac_key_opt),
       encode_opts: encode_opts,
       reconnect: reconnect,
       strategy: strategy,
