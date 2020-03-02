@@ -152,7 +152,7 @@ defmodule Erps.Client do
   @typep state :: %__MODULE__{
     module:         module,
     socket:         nil | Erps.socket,
-    server:         :inet.address,
+    server:         :inet.ip_address,
     port:           :inet.port_number,
     data:           term,
     base_packet:    Packet.t,
@@ -272,7 +272,21 @@ defmodule Erps.Client do
     end
   end
 
+  #############################################################################
+  ## ROUTER
+
+  @typep noreply_response ::
+  {:noreply, state}
+  | {:noreply, state, timeout | :hibernate | {:continue, term}}
+  | {:stop, reason :: term, state}
+
+  @typep reply_response ::
+  {:reply, reply :: term, state}
+  | {:reply, reply :: term, state, timeout | :hibernate | {:continue, term}}
+  | noreply_response
+
   @impl true
+  @spec handle_call(call :: term, GenServer.from, state) :: reply_response
   def handle_call(_, _, state = %{socket: nil}), do: {:noreply, state}
   def handle_call(val, from, state = %{strategy: strategy}) do
     tcp_data = state.base_packet
@@ -284,6 +298,7 @@ defmodule Erps.Client do
   end
 
   @impl true
+  @spec handle_cast(cast :: term, state) :: noreply_response
   def handle_cast(_, state = %{socket: nil}), do: {:noreply, state}
   def handle_cast(val, state = %{strategy: strategy}) do
     #instrument data into the packet and convert to binary.
@@ -298,6 +313,7 @@ defmodule Erps.Client do
   @closed [:tcp_closed, :ssl_closed]
 
   @impl true
+  @spec handle_info(info :: term, state) :: noreply_response
   def handle_info({ttype, socket, data}, state = %{socket: socket, transport_type: ttype})do
     case Packet.decode(data, state.decode_opts) do
       {:error, error} ->
@@ -342,7 +358,7 @@ defmodule Erps.Client do
     |> process_noreply(state)
   end
 
-  @spec push_impl(push :: term, state) :: {:noreply, state} | {:stop, term, state}
+  @spec push_impl(push :: term, state) :: noreply_response
   defp push_impl(push, state = %{module: module}) do
     if function_exported?(module, :handle_push, 2) do
       push
@@ -354,6 +370,14 @@ defmodule Erps.Client do
   end
 
   @impl true
+  @spec handle_continue(continue :: term, state) :: noreply_response
+  def handle_continue(continuation, state = %{module: module}) do
+    continuation
+    |> module.handle_continue(state.data)
+    |> process_noreply(state)
+  end
+
+  @impl true
   @spec terminate(reason, state) :: term
     when reason: :normal | :shutdown | {:shutdown, term}
   def terminate(reason, state = %{module: module}) do
@@ -362,15 +386,8 @@ defmodule Erps.Client do
     end
   end
 
-  @impl true
-  def handle_continue(continuation, state = %{module: module}) do
-    continuation
-    |> module.handle_continue(state.data)
-    |> process_noreply(state)
-  end
-
   #############################################################################
-  ## Adapters
+  ## ADAPTERS
 
   defp process_init(init_resp, parameters) do
     case init_resp do

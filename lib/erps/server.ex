@@ -112,6 +112,8 @@ defmodule Erps.Server do
     end
   end
 
+  alias Erps.Packet
+
   defstruct [:module, :data, :port, :socket, :decode_opts, :filter, :transport_type,
     ssl_opts: [],
     strategy: @default_strategy,
@@ -174,8 +176,6 @@ defmodule Erps.Server do
     | {:ok, state, timeout() | :hibernate | {:continue, term()}}
     | :ignore
     | {:stop, reason :: any()}
-    when state: any()
-
   def init({module, param, opts}) do
     port = opts[:port] || 0
 
@@ -308,7 +308,18 @@ defmodule Erps.Server do
   #############################################################################
   # router
 
+  @typep noreply_response ::
+  {:noreply, state}
+  | {:noreply, state, timeout | :hibernate | {:continue, term}}
+  | {:stop, reason :: term, state}
+
+  @typep reply_response ::
+  {:reply, reply :: term, state}
+  | {:reply, reply :: term, state, timeout | :hibernate | {:continue, term}}
+  | noreply_response
+
   @impl true
+  @spec handle_call(call :: term, from, state) :: reply_response
   def handle_call(:"$port", _from, state), do: port_impl(state)
   def handle_call(:"$connections", _from, state), do: connections_impl(state)
   def handle_call({:"$disconnect", port}, _from, state), do: disconnect_impl(port, state)
@@ -322,6 +333,7 @@ defmodule Erps.Server do
   end
 
   @impl true
+  @spec handle_cast(cast :: term, state) :: noreply_response
   def handle_cast(cast, state = %{module: module}) do
     cast
     |> module.handle_cast(state.data)
@@ -331,6 +343,7 @@ defmodule Erps.Server do
   @closed [:tcp_closed, :ssl_closed]
 
   @impl true
+  @spec handle_info(info :: term, state) :: noreply_response
   def handle_info(:accept, state = %{strategy: strategy}) do
     Process.send_after(self(), :accept, 0)
     with {:ok, socket} <- strategy.accept(state.socket, 100),
@@ -383,6 +396,7 @@ defmodule Erps.Server do
   end
 
   @impl true
+  @spec handle_continue(continue :: term, state) :: noreply_response
   def handle_continue(continue_term, state = %{module: module}) do
     continue_term
     |> module.handle_continue(state.data)
@@ -390,6 +404,8 @@ defmodule Erps.Server do
   end
 
   @impl true
+  @spec terminate(reason, state) :: any
+  when reason: :normal | :shutdown | {:shutdown, term}
   def terminate(reason, state = %{module: module}) do
     if function_exported?(module, :terminate, 2) do
       module.terminate(reason, state.data)
@@ -413,6 +429,7 @@ defmodule Erps.Server do
     end
   end
 
+  @spec process_call(term, from, state) :: reply_response
   defp process_call(call_result, from, state) do
     case call_result do
       {:reply, reply, data} ->
@@ -429,6 +446,7 @@ defmodule Erps.Server do
     end
   end
 
+  @spec process_noreply(term, state) :: noreply_response
   defp process_noreply(call_result, state) do
     case call_result do
       {:noreply, data} ->
@@ -527,7 +545,7 @@ defmodule Erps.Server do
   @callback handle_cast(request :: term(), state :: term()) ::
     {:noreply, new_state}
     | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
-    | {:stop, reason :: term(), new_state}
+    | {:stop, reason :: term, new_state}
     when new_state: term()
 
   @doc """
@@ -545,7 +563,7 @@ defmodule Erps.Server do
   @callback handle_info(msg :: :timeout | term(), state :: term()) ::
     {:noreply, new_state}
     | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
-    | {:stop, reason :: term(), new_state}
+    | {:stop, reason :: term, new_state}
     when new_state: term()
 
   @doc """
@@ -561,7 +579,7 @@ defmodule Erps.Server do
   @callback  handle_continue(continue :: term(), state :: term()) ::
     {:noreply, new_state}
     | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
-    | {:stop, reason :: term(), new_state}
+    | {:stop, reason :: term, new_state}
     when new_state: term()
 
   @doc """

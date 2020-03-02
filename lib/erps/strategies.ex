@@ -32,7 +32,7 @@ defmodule Erps.Strategy.Api do
   The connection must be opened with `active: false`, or upgrade guarantees
   cannot be ensured for X509-TLS connections.
   """
-  @callback connect(:inet.address, :inet.port_number, keyword)
+  @callback connect(:inet.ip_address, :inet.port_number, keyword)
   :: {:ok, socket} | {:error, any}
 
   @doc """
@@ -254,6 +254,7 @@ defmodule Erps.Strategy.Tls do
   """
 
   @behaviour Erps.Strategy.Api
+  alias Erps.Strategy.Api
 
   @doc "Callback implementation for `c:Erps.Strategy.Api.listen/2`, via `Erps.Strategy.OneWayTls.listen/2`."
   defdelegate listen(port, opts), to: Erps.Strategy.OneWayTls
