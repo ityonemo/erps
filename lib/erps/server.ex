@@ -165,7 +165,9 @@ defmodule Erps.Server do
   ### options
 
   - `:port` tcp port that the server should listen to.  Use `0` to pick an unused
-    port and `port/1` to retrieve that port number (useful for testing)
+    port and `port/1` to retrieve that port number (useful for testing).  You may
+    also set it to `false` if you want the server to act as a normal GenServer
+    (this is useful if you need a configuration-dependent behaviour)
   - `:strategy` strategy module (see `Erps.Strategy.Api`)
   - `:tls_opts` options for TLS authorization and encryption.  Should include:
     - `:cacertfile` path to the certificate of your signing authority.
