@@ -76,7 +76,7 @@ defmodule Erps.Client do
         hmac_key: "ABCDEFGHIJKLMNOP",
         server: "my_api-server.example.com",
         port: 4747,
-        strategy: Erps.Strategy.Tls,
+        transport: Erps.Transport.Tls,
         tls_opts: [...])
     end
 
@@ -89,10 +89,10 @@ defmodule Erps.Client do
 
   @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
 
-  if Mix.env() in [:dev, :test] do
-    @default_strategy Erps.Strategy.Tcp
+  if Mix.env in [:dev, :test] do
+    @default_transport Erps.Transport.Tcp
   else
-    @default_strategy Erps.Strategy.Tls
+    @default_transport Application.get_env(:erps, :transport, Erps.Transport.Tls)
   end
 
   # by default, attempt a reconnect every minute.
@@ -144,7 +144,7 @@ defmodule Erps.Client do
     tls_opts: [],
     decode_opts: [safe: true],
     keepalive: @default_keepalive,
-    strategy: @default_strategy]
+    transport: @default_transport]
 
   @type hmac_function :: (() -> String.t)
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
@@ -164,7 +164,7 @@ defmodule Erps.Client do
     tls_opts:       keyword,
     decode_opts:    keyword,
     keepalive:      timeout,
-    strategy:       module
+    transport:       module
   }
 
   require Logger
@@ -192,7 +192,7 @@ defmodule Erps.Client do
 
   - `:server`      IP address of the target server (required)
   - `:port`        IP port of the target server (required)
-  - `:strategy`    module for communication transport strategy
+  - `:transport`    module for communication transport strategy
   - `:keepalive`   time interval for sending a TCP/IP keepalive token.
   - `:hmac_key`    one of two options:
     - `function/0` a zero-arity function which can be used to fetch the key at runtime
@@ -200,8 +200,8 @@ defmodule Erps.Client do
       and pulled from `System.get_env/1` or `Application.get_env/2`)
   - `:tls_opts`  options for setting up a TLS connection.
     - `:cacertfile` path to the certificate of your signing authority. (required)
-    - `:certfile`   path to the server certificate file. (required for `Erps.Strategy.Tls`)
-    - `:keyfile`    path to the signing key. (required for `Erps.Strategy.Tls`)
+    - `:certfile`   path to the server certificate file. (required for `Erps.Transport.Tls`)
+    - `:keyfile`    path to the signing key. (required for `Erps.Transport.Tls`)
 
   see `GenServer.start_link/3` for a description of further options.
   """
@@ -218,7 +218,7 @@ defmodule Erps.Client do
   def init({module, start, opts}) do
     instance_options = get_instance_options(opts)
     hmac_key = instance_options[:hmac_key]
-    strategy = instance_options[:strategy]
+    transport = instance_options[:transport]
 
     module_options = get_module_options(module, hmac_key)
 
@@ -237,8 +237,8 @@ defmodule Erps.Client do
     |> Keyword.merge(instance_options)
     |> Keyword.merge(module: module)
 
-    with {:ok, socket} <- strategy.connect(server, port, [:binary, active: false]),
-         upgraded <- strategy.upgrade!(socket, state_params[:tls_opts]) do
+    with {:ok, socket} <- transport.connect(server, port, [:binary, active: false]),
+         upgraded <- transport.upgrade!(socket, state_params[:tls_opts]) do
       Process.send_after(self(), :"$keepalive", state_params[:keepalive])
       start
       |> module.init()
@@ -262,12 +262,12 @@ defmodule Erps.Client do
     end
 
     basic_options = Keyword.take(opts, [:tls_opts,
-      :safe, :strategy, :reconnect])
-    strategy = opts[:strategy] || @default_strategy
+      :safe, :transport, :reconnect])
+    transport = opts[:transport] || @default_transport
 
     adjusted_options = hmac_key_option ++ basic_options ++
-    [strategy: strategy,
-     transport_type: strategy.transport_type()]
+    [transport: transport,
+     transport_type: transport.transport_type()]
 
     Keyword.merge(opts, adjusted_options)
   end
@@ -320,25 +320,25 @@ defmodule Erps.Client do
   @impl true
   @spec handle_call(call :: term, GenServer.from, state) :: reply_response
   def handle_call(_, _, state = %{socket: nil}), do: {:noreply, state}
-  def handle_call(call, from, state = %{strategy: strategy}) do
+  def handle_call(call, from, state = %{transport: transport}) do
     tcp_data = state.base_packet
     |> struct(type: :call, payload: {from, call})
     |> Packet.encode(state.encode_opts)
 
-    strategy.send(state.socket, tcp_data)
+    transport.send(state.socket, tcp_data)
     {:noreply, state}
   end
 
   @impl true
   @spec handle_cast(cast :: term, state) :: noreply_response
   def handle_cast(_, state = %{socket: nil}), do: {:noreply, state}
-  def handle_cast(cast, state = %{strategy: strategy}) do
+  def handle_cast(cast, state = %{transport: transport}) do
     #instrument data into the packet and convert to binary.
     tcp_data = state.base_packet
     |> struct(type: :cast, payload: cast)
     |> Packet.encode(state.encode_opts)
 
-    strategy.send(state.socket, tcp_data)
+    transport.send(state.socket, tcp_data)
     {:noreply, state}
   end
 
@@ -367,10 +367,10 @@ defmodule Erps.Client do
   def handle_info({closed, socket}, state = %{socket: socket}) when closed in @closed do
     {:stop, closed, state}
   end
-  def handle_info(:"$reconnect", state = %{socket: nil, strategy: strategy}) do
-    case strategy.connect(state.server, state.port, [:binary, active: true]) do
+  def handle_info(:"$reconnect", state = %{socket: nil, transport: transport}) do
+    case transport.connect(state.server, state.port, [:binary, active: true]) do
       {:ok, socket} ->
-        upgraded = strategy.upgrade!(socket, state.tls_opts)
+        upgraded = transport.upgrade!(socket, state.tls_opts)
         Process.send_after(self(), :"$keepalive", state.keepalive)
         {:noreply, %{state | socket: upgraded}}
       {:error, :econnrefused} ->
@@ -378,9 +378,9 @@ defmodule Erps.Client do
         {:noreply, state}
     end
   end
-  def handle_info(:"$keepalive", state = %{strategy: strategy}) do
+  def handle_info(:"$keepalive", state = %{transport: transport}) do
     keepalive_packet = Packet.encode(%Packet{})
-    strategy.send(state.socket, keepalive_packet)
+    transport.send(state.socket, keepalive_packet)
     Process.send_after(self(), :"$keepalive", state.keepalive)
     {:noreply, state}
   end

@@ -68,7 +68,7 @@ defmodule Erps.Packet do
 
     # set the appropriate lambda to use for unpickling.
     binary_to_term = if opts[:safe] do
-      &:erlang.binary_to_term(&1, [:safe])
+      &Plug.Crypto.non_executable_binary_to_term(&1, [:safe])
     else
       &:erlang.binary_to_term/1
     end
