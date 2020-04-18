@@ -89,10 +89,10 @@ defmodule Erps.Client do
 
   @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
 
-  if Mix.env() in [:dev, :test] do
+  if Mix.env in [:dev, :test] do
     @default_transport Erps.Transport.Tcp
   else
-    @default_transport Erps.Transport.Tls
+    @default_transport Application.get_env(:erps, :transport, Erps.Transport.Tls)
   end
 
   # by default, attempt a reconnect every minute.

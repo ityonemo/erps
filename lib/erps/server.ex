@@ -52,18 +52,25 @@ defmodule Erps.Server do
     set to `false`, then allows undefined atoms and lambdas to be passed
     via the protocol.  This should be used with extreme caution, as
     disabling safe mode can be an attack vector. (defaults to `true`)
+  - `:port` - sets the TCP/IP port that the server will listen to.  If
+    you don't set it or set it to `0` it will pick a random port, which
+    is useful for testing purposes.
+  - `:transport` - set the transport module, which must implement
+    `Erps.Transport.Api` behaviour.  If you set it to `false`, the
+    Erps server will act similarly to a `GenServer` (with some
+    overhead).
 
   ### Example
 
   ```
   defmodule MyServer do
-    use Erps.Server, versions: " ~> 0.2.4",
+    use Erps.Server, versions: "~> 0.2.4",
                      identifier: "my_api",
                      safe: false
 
     def start_link(iv) do
-      Erps.Client.start_link(__MODULE__, init,
-        transport: Erps.Transport.Tls,
+      Erps.Server.start_link(__MODULE__, init,
+        port: ,
         tls_opts: [...])
     end
 
@@ -71,7 +78,7 @@ defmodule Erps.Server do
   end
   ```
 
-  ### Magical featurues
+  ### Magical features
 
   The following functions are hoisted to your server module
   so that you can call them in your code with clarity and less
@@ -84,10 +91,15 @@ defmodule Erps.Server do
 
   """
 
-  if Mix.env() in [:dev, :test] do
+  # defaults the transport to TLS for library users.  This can be
+  # overridden by a (gasp!) environment variable, but mostly you should
+  # do this on a case-by-case basis on `start_link`.  For internal
+  # library testing, this defaults to Tcp
+
+  if Mix.env in [:dev, :test] do
     @default_transport Erps.Transport.Tcp
   else
-    @default_transport Erps.Transport.Tls
+    @default_transport Application.get_env(:erps, :transport, Erps.Transport.Tls)
   end
 
   defmacro __using__(opts) do
@@ -209,7 +221,12 @@ defmodule Erps.Server do
       &default_filter/2
     end
 
-    transport = opts[:transport] || @default_transport
+    transport = case opts[:transport] do
+      nil -> @default_transport
+      false -> Erps.Transport.None
+      specified -> specified
+    end
+
     listen_opts = [:binary, active: false, reuseaddr: true, tls_opts: opts[:tls_opts]]
 
     case transport.listen(port, listen_opts) do

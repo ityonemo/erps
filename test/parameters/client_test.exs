@@ -263,7 +263,6 @@ defmodule ErpsTest.Parameters.ClientTest do
   end
 
   describe "when the client is instrumented with signature" do
-    @tag :one
     test "it looks for local @hmac_key", %{port: port} do
       {:ok, client} = ClientSignatureLocal.start_link(port)
       GenServer.cast(client, :foo)

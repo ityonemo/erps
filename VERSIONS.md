@@ -9,7 +9,6 @@
 - Upgraded to using [`Plug.Crypto.non_executable_binary_to_term/2`](https://hexdocs.pm/plug_crypto/Plug.Crypto.html#non_executable_binary_to_term/2), according to the [ERLEF foundation security recommendations](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/serialisation).
 
 - Added warnings about HMAC system.
-
-- Added `port: false` option
-
 - (breaking) renamed vague `strategy` to `transport`
+- Added `transport: false` option
+
