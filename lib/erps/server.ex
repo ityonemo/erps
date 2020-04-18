@@ -63,7 +63,7 @@ defmodule Erps.Server do
 
     def start_link(iv) do
       Erps.Client.start_link(__MODULE__, init,
-        strategy: Erps.Strategy.Tls,
+        transport: Erps.Transport.Tls,
         tls_opts: [...])
     end
 
@@ -85,9 +85,9 @@ defmodule Erps.Server do
   """
 
   if Mix.env() in [:dev, :test] do
-    @default_strategy Erps.Strategy.Tcp
+    @default_transport Erps.Transport.Tcp
   else
-    @default_strategy Erps.Strategy.Tls
+    @default_transport Erps.Transport.Tls
   end
 
   defmacro __using__(opts) do
@@ -127,7 +127,7 @@ defmodule Erps.Server do
 
   defstruct [:module, :data, :port, :socket, :decode_opts, :filter, :transport_type,
     tls_opts: [],
-    strategy: @default_strategy,
+    transport: @default_transport,
     connections: []]
 
   @typep filter_fn :: (Packet.type, term -> boolean)
@@ -168,7 +168,7 @@ defmodule Erps.Server do
     port and `port/1` to retrieve that port number (useful for testing).  You may
     also set it to `false` if you want the server to act as a normal GenServer
     (this is useful if you need a configuration-dependent behaviour)
-  - `:strategy` strategy module (see `Erps.Strategy.Api`)
+  - `:transport` transport module (see `Erps.Transport.Api`)
   - `:tls_opts` options for TLS authorization and encryption.  Should include:
     - `:cacertfile` path to the certificate of your signing authority.
     - `:certfile`   path to the server certificate file.
@@ -209,15 +209,15 @@ defmodule Erps.Server do
       &default_filter/2
     end
 
-    strategy = opts[:strategy] || @default_strategy
+    transport = opts[:transport] || @default_transport
     listen_opts = [:binary, active: false, reuseaddr: true, tls_opts: opts[:tls_opts]]
 
-    case strategy.listen(port, listen_opts) do
+    case transport.listen(port, listen_opts) do
       {:ok, socket} ->
         server_opts = Keyword.merge(opts,
           module: module, port: port, socket: socket, decode_opts: decode_opts,
-          filter: filter, strategy: strategy,
-          transport_type: strategy.transport_type())
+          filter: filter, transport: transport,
+          transport_type: transport.transport_type())
 
         # kick off the accept loop.
         Process.send_after(self(), :accept, 0)
@@ -287,12 +287,12 @@ defmodule Erps.Server do
   @spec push(server, push::term) :: :ok
   def push(srv, push), do: GenServer.call(srv, {:"$push", push})
   @spec push_impl(push :: term, state) :: reply(:ok)
-  defp push_impl(push, state = %{strategy: strategy}) do
+  defp push_impl(push, state = %{transport: transport}) do
     tcp_data = Packet.encode(%Packet{
       type: :push,
       payload: push
     })
-    Enum.each(state.connections, &strategy.send(&1, tcp_data))
+    Enum.each(state.connections, &transport.send(&1, tcp_data))
     {:reply, :ok, state}
   end
 
@@ -312,9 +312,9 @@ defmodule Erps.Server do
   end
 
   @spec do_reply(from, term, state) :: :ok
-  defp do_reply({:remote, socket, from}, reply, %{strategy: strategy}) do
+  defp do_reply({:remote, socket, from}, reply, %{transport: transport}) do
     tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
-    strategy.send(socket, tcp_data)
+    transport.send(socket, tcp_data)
   end
   defp do_reply(local_client, reply, _state), do: GenServer.reply(local_client, reply)
 
@@ -357,17 +357,17 @@ defmodule Erps.Server do
 
   @impl true
   @spec handle_info(info :: term, state) :: noreply_response
-  def handle_info(:accept, state = %{strategy: strategy}) do
+  def handle_info(:accept, state = %{transport: transport}) do
     Process.send_after(self(), :accept, 0)
-    with {:ok, socket} <- strategy.accept(state.socket, 100),
-         {:ok, upgrade} <- strategy.handshake(socket, state.tls_opts) do
+    with {:ok, socket} <- transport.accept(state.socket, 100),
+         {:ok, upgrade} <- transport.handshake(socket, state.tls_opts) do
       {:noreply, %{state | connections: [upgrade | state.connections]}}
     else
       _any -> {:noreply, state}
     end
   end
   def handle_info({ttype, socket, bin_data},
-      state = %{module: module, filter: filter, strategy: strategy, transport_type: ttype}) do
+      state = %{module: module, filter: filter, transport: transport, transport_type: ttype}) do
 
     case Packet.decode(bin_data, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
@@ -392,7 +392,7 @@ defmodule Erps.Server do
   catch
     {:error, any} ->
       tcp_data = Packet.encode(%Packet{type: :error, payload: any})
-      strategy.send(socket, tcp_data)
+      transport.send(socket, tcp_data)
       {:noreply, state}
   end
   def handle_info({closed, port}, state) when closed in @closed do

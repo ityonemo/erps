@@ -1,15 +1,15 @@
-defmodule Erps.Strategy.Api do
+defmodule Erps.Transport.Api do
 
   @moduledoc """
   Encapsulates a common API which describes a transport strategy.
 
   Currently the available transport strategies are:
-  - `Erps.Strategy.Tcp`: unencrypted, unauthenticated communication.  Only appropriate
+  - `Erps.Transport.Tcp`: unencrypted, unauthenticated communication.  Only appropriate
     in `:dev` and `:test` environments.
-  - `Erps.Strategy.Tls`: two-way authenticated, encrypted communication, using X509
+  - `Erps.Transport.Tls`: two-way authenticated, encrypted communication, using X509
     TLS encryption.  This is the general use case for Erps, for point-to-point
     API services including over untrusted networks.
-  - `Erps.Strategy.OneWayTls`: one-way authenticated, encrypted communication, using
+  - `Erps.Transport.OneWayTls`: one-way authenticated, encrypted communication, using
     X509 TLS encryption.  The server must present its authentication tokens
     and the clients may call in.  This is akin to traditional Web API or gRPC
     endpoints management, but still requires manual certificate distribution
@@ -41,7 +41,7 @@ defmodule Erps.Strategy.Api do
 
   Also should upgrade the connection from `active: false` to `active: true`
 
-  In the case of an unencrypted strategy, e.g. `Erps.Strategy.Tcp`, only perfroms the
+  In the case of an unencrypted transport, e.g. `Erps.Transport.Tcp`, only perfroms the
   connection upgrade.
   """
   @callback upgrade!(:inet.socket, keyword) :: socket
@@ -73,7 +73,7 @@ defmodule Erps.Strategy.Api do
 
   Also should upgrade the connection from `active: false` to `active: true`.
 
-  In the case of an unencrypted strategy, e.g. `Erps.Strategy.Tcp`, only performs the
+  In the case of an unencrypted transport, e.g. `Erps.Transport.Tcp`, only performs the
   connection upgrade.
   """
   @callback handshake(:inet.socket, keyword) :: {:ok, socket} | {:error, any}
@@ -97,22 +97,22 @@ defmodule Erps.Strategy.Api do
   end
 end
 
-defmodule Erps.Strategy.Tcp do
+defmodule Erps.Transport.Tcp do
 
   @moduledoc """
   implements a tcp transport strategy.
   """
 
-  @behaviour Erps.Strategy.Api
-  alias Erps.Strategy.Api
+  @behaviour Erps.Transport.Api
+  alias Erps.Transport.Api
 
-  @doc "Callback implementation for `c:Erps.Strategy.Api.listen/2`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.listen/2`."
   defdelegate listen(port, opts), to: Api
-  @doc "Callback implementation for `c:Erps.Strategy.Api.accept/2`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.accept/2`."
   defdelegate accept(sock, timeout), to: :gen_tcp
-  @doc "Callback implementation for `c:Erps.Strategy.Api.connect/3`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.connect/3`."
   defdelegate connect(host, port, opts), to: :gen_tcp
-  @doc "Callback implementation for `c:Erps.Strategy.Api.send/2`, via `:gen_tcp.send/2`"
+  @doc "Callback implementation for `c:Erps.Transport.Api.send/2`, via `:gen_tcp.send/2`"
   defdelegate send(sock, content), to: :gen_tcp
 
   @impl true
@@ -121,7 +121,7 @@ defmodule Erps.Strategy.Tcp do
   upgrades the socket to `active: true`.  Does not upgrade to an authenticated
   or encrypted channel.
 
-  Callback implementation for `c:Erps.Strategy.Api.upgrade!/2`.
+  Callback implementation for `c:Erps.Transport.Api.upgrade!/2`.
   """
   def upgrade!(socket, _opts) do
     :ok == :inet.setopts(socket, active: true) || raise "failure to activate socket!"
@@ -134,7 +134,7 @@ defmodule Erps.Strategy.Tcp do
   upgrades the socket to `active: true`.  Does not request the client-side for an
   upgrade to an authenticated or encrypted channel.
 
-  Callback implementation for `c:Erps.Strategy.Api.upgrade!/2`.
+  Callback implementation for `c:Erps.Transport.Api.upgrade!/2`.
   """
   def handshake(socket, _opts) do
     case :inet.setopts(socket, active: true) do
@@ -148,12 +148,12 @@ defmodule Erps.Strategy.Tcp do
   def transport_type, do: :tcp
 end
 
-defmodule Erps.Strategy.OneWayTls do
+defmodule Erps.Transport.OneWayTls do
 
   @moduledoc """
   implements a one-way TLS transport strategy.
 
-  this strategy is equivalent to a traditional http/grpc strategy, where a client
+  this transport is equivalent to a traditional http/grpc transport, where a client
   does not have to be authenticated to a server, but the server must be
   authenticated to the client.
 
@@ -162,8 +162,8 @@ defmodule Erps.Strategy.OneWayTls do
   own risk!
   """
 
-  @behaviour Erps.Strategy.Api
-  alias Erps.Strategy.Api
+  @behaviour Erps.Transport.Api
+  alias Erps.Transport.Api
 
   @impl true
   @spec listen(:inet.port_number, keyword) :: {:ok, :inet.socket} | {:error, any}
@@ -174,7 +174,7 @@ defmodule Erps.Strategy.OneWayTls do
   under the keyword `:tls_opts`, and point to existing files (but not the validity
   of their authority chain or their crytographic signing).
 
-  Callback implementation for `c:Erps.Strategy.Api.listen/2`.
+  Callback implementation for `c:Erps.Transport.Api.listen/2`.
   """
   def listen(port, opts) do
     # perform early basic validation of tls options.
@@ -192,11 +192,11 @@ defmodule Erps.Strategy.OneWayTls do
     File.exists?(filepath) || raise "#{key} not a valid file"
   end
 
-  @doc "Callback implementation for `c:Erps.Strategy.Api.accept/2`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.accept/2`."
   defdelegate accept(sock, timeout), to: :gen_tcp
-  @doc "Callback implementation for `c:Erps.Strategy.Api.connect/3`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.connect/3`."
   defdelegate connect(host, port, opts), to: :gen_tcp
-  @doc "Callback implementation for `c:Erps.Strategy.Api.send/2`, via `:ssl.send/2`"
+  @doc "Callback implementation for `c:Erps.Transport.Api.send/2`, via `:ssl.send/2`"
   defdelegate send(sock, content), to: :ssl
 
   @impl true
@@ -205,7 +205,7 @@ defmodule Erps.Strategy.OneWayTls do
   (client) responds to a server TLS `handshake/2` request, by upgrading to an encrypted connection.
   Verifies the identity of the server CA, and reject if it's not a valid peer.
 
-  Callback implementation for `c:Erps.Strategy.Api.upgrade!/2`.
+  Callback implementation for `c:Erps.Transport.Api.upgrade!/2`.
   """
   def upgrade!(_, nil), do: raise "tls socket not configured"
   def upgrade!(socket, tls_opts) do
@@ -224,7 +224,7 @@ defmodule Erps.Strategy.OneWayTls do
   (server) initiates a client `upgrade!/2` request, by upgrading to an encrypted connection.
   Performs no authentication of the client.
 
-  Callback implementation for `c:Erps.Strategy.Api.handshake/2`.
+  Callback implementation for `c:Erps.Transport.Api.handshake/2`.
   """
   @spec handshake(:inet.socket, keyword) :: {:ok, Api.socket} | {:error, any}
   def handshake(socket, tls_opts) do
@@ -243,29 +243,29 @@ defmodule Erps.Strategy.OneWayTls do
   def transport_type, do: :ssl
 end
 
-defmodule Erps.Strategy.Tls do
+defmodule Erps.Transport.Tls do
 
   @moduledoc """
   implements a two-way TLS transport strategy.
 
-  this strategy is useful when you have trusted clients and servers that are
+  this transport is useful when you have trusted clients and servers that are
   authenticated against each other and must have an encrypted channel over
   WAN.
   """
 
-  @behaviour Erps.Strategy.Api
-  alias Erps.Strategy.Api
+  @behaviour Erps.Transport.Api
+  alias Erps.Transport.Api
 
-  @doc "Callback implementation for `c:Erps.Strategy.Api.listen/2`, via `Erps.Strategy.OneWayTls.listen/2`."
-  defdelegate listen(port, opts), to: Erps.Strategy.OneWayTls
-  @doc "Callback implementation for `c:Erps.Strategy.Api.accept/2`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.listen/2`, via `Erps.Transport.OneWayTls.listen/2`."
+  defdelegate listen(port, opts), to: Erps.Transport.OneWayTls
+  @doc "Callback implementation for `c:Erps.Transport.Api.accept/2`."
   defdelegate accept(sock, timeout), to: :gen_tcp
-  @doc "Callback implementation for `c:Erps.Strategy.Api.connect/3`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.connect/3`."
   defdelegate connect(host, port, opts), to: :gen_tcp
-  @doc "Callback implementation for `c:Erps.Strategy.Api.send/2`, via `:ssl.send/2`."
+  @doc "Callback implementation for `c:Erps.Transport.Api.send/2`, via `:ssl.send/2`."
   defdelegate send(sock, content), to: :ssl
-  @doc "Callback implementation for `c:Erps.Strategy.Api.upgrade!/2`, via `Erps.Strategy.OneWayTls.upgrade!/2`."
-  defdelegate upgrade!(sock, opts), to: Erps.Strategy.OneWayTls
+  @doc "Callback implementation for `c:Erps.Transport.Api.upgrade!/2`, via `Erps.Transport.OneWayTls.upgrade!/2`."
+  defdelegate upgrade!(sock, opts), to: Erps.Transport.OneWayTls
 
   @impl true
   @spec handshake(:inet.socket, keyword) :: {:ok, Api.socket} | {:error, any}
