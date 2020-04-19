@@ -144,10 +144,16 @@ defmodule Erps.Client do
     tls_opts: [],
     decode_opts: [safe: true],
     keepalive: @default_keepalive,
-    transport: @default_transport]
+    transport: @default_transport,
+    reply_cache: %{},
+    reply_ttl: 5000
+  ]
 
   @type hmac_function :: (() -> String.t)
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
+
+  @type reply_ref   :: %{from: GenServer.from, ttl: DateTime.t}
+  @type reply_cache :: %{optional(non_neg_integer) => reply_ref}
 
   @typep state :: %__MODULE__{
     module:         module,
@@ -164,7 +170,9 @@ defmodule Erps.Client do
     tls_opts:       keyword,
     decode_opts:    keyword,
     keepalive:      timeout,
-    transport:       module
+    transport:      module,
+    reply_cache:    reply_cache,
+    reply_ttl:      non_neg_integer
   }
 
   require Logger
@@ -335,12 +343,37 @@ defmodule Erps.Client do
     raise "call attempted when the client is not connected"
   end
   def handle_call(call, from, state = %{transport: transport}) do
+    ref = :erlang.phash2(from)
+
     tcp_data = state.base_packet
     |> struct(type: :call, payload: {from, call})
     |> Packet.encode(state.encode_opts)
 
     transport.send(state.socket, tcp_data)
-    {:noreply, state}
+    # build out the reply cache
+    expiry = DateTime.add(DateTime.utc_now(), state.reply_ttl)
+    new_reply_cache =
+      Map.put(state.reply_cache, ref, %{from: from, ttl: expiry})
+
+    {:noreply, %{state | reply_cache: new_reply_cache}}
+  end
+
+  defp handle_call_response(reply, from, state = %{reply_cache: reply_cache}) do
+    if is_map_key(reply_cache, from) do
+      GenServer.reply(from, {:error, reply})
+      {:noreply, %{state | reply_cache: Map.delete(reply_cache, from)}}
+    else
+      {:noreply, state}
+    end
+  end
+
+  defp do_check_expired_calls(state = %{reply_cache: reply_cache}) do
+    new_cache = reply_cache
+    |> Enum.filter(fn {_, %{ttl: ttl}} ->
+      DateTime.compare(DateTime.utc_now(), ttl) == :lt
+    end)
+    |> Enum.into(%{})
+    %{state | reply_cache: new_cache}
   end
 
   @impl true
@@ -371,8 +404,7 @@ defmodule Erps.Client do
         GenServer.reply(from, reply)
         {:noreply, state}
       {:ok, %Packet{type: :error, payload: {reply, from}}} ->
-        GenServer.reply(from, {:error, reply})
-        {:noreply, state}
+        handle_call_response(reply, from, state)
       {:ok, %Packet{type: :error, payload: payload}} ->
         Logger.error("error response from server: #{inspect payload}")
         {:noreply, state}
@@ -396,7 +428,7 @@ defmodule Erps.Client do
     keepalive_packet = Packet.encode(%Packet{})
     transport.send(state.socket, keepalive_packet)
     Process.send_after(self(), :"$keepalive", state.keepalive)
-    {:noreply, state}
+    {:noreply, do_check_expired_calls(state)}
   end
   def handle_info(info, state = %{module: module}) do
     info
