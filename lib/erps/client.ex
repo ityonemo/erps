@@ -198,18 +198,20 @@ defmodule Erps.Client do
 
   ### options
 
-  - `:server`      IP address of the target server (required)
-  - `:port`        IP port of the target server (required)
+  - `:server`       IP address of the target server (required)
+  - `:port`         IP port of the target server (required)
   - `:transport`    module for communication transport strategy
-  - `:keepalive`   time interval for sending a TCP/IP keepalive token.
-  - `:hmac_key`    one of two options:
-    - `function/0` a zero-arity function which can be used to fetch the key at runtime
-    - `binary`     a directly instrumented value (this could be fetched at vm startup time
+  - `:keepalive`    time interval for sending a TCP/IP keepalive token.
+  - `:hmac_key`     one of two options:
+    - `function/0`  a zero-arity function which can be used to fetch the key at runtime
+    - `binary`      a directly instrumented value (this could be fetched at vm startup time
       and pulled from `System.get_env/1` or `Application.get_env/2`)
-  - `:tls_opts`  options for setting up a TLS connection.
+  - `:tls_opts`     options for setting up a TLS connection.
     - `:cacertfile` path to the certificate of your signing authority. (required)
     - `:certfile`   path to the server certificate file. (required for `Erps.Transport.Tls`)
     - `:keyfile`    path to the signing key. (required for `Erps.Transport.Tls`)
+  - `:reply_ttl`    the maximum amount of time that client should wait for `call`
+    replies.  Units in ms, defaults to `5000`.
 
   see `GenServer.start_link/3` for a description of further options.
   """
