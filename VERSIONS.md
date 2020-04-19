@@ -12,3 +12,7 @@
 - (breaking) renamed vague `strategy` to `transport`
 - Added `transport: false` option
 
+## 0.2.1
+
+- crash for calls if it's not connected yet.
+- create `connected?` call

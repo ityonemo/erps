@@ -305,6 +305,15 @@ defmodule Erps.Client do
   end
 
   #############################################################################
+  ## API
+
+  @spec connected?(GenServer.server) :: boolean
+  @doc """
+  returns `true` if the connection is active
+  """
+  def connected?(server), do: GenServer.call(server, :"$connected?")
+
+  #############################################################################
   ## ROUTER
 
   @typep noreply_response ::
@@ -319,7 +328,12 @@ defmodule Erps.Client do
 
   @impl true
   @spec handle_call(call :: term, GenServer.from, state) :: reply_response
-  def handle_call(_, _, state = %{socket: nil}), do: {:noreply, state}
+  def handle_call(:"$connected?", _, state) do
+    {:reply, not is_nil(state.socket), state}
+  end
+  def handle_call(_, _, %{socket: nil}) do
+    raise "call attempted when the client is not connected"
+  end
   def handle_call(call, from, state = %{transport: transport}) do
     tcp_data = state.base_packet
     |> struct(type: :call, payload: {from, call})
@@ -349,7 +363,7 @@ defmodule Erps.Client do
   def handle_info({ttype, socket, data}, state = %{socket: socket, transport_type: ttype})do
     case Packet.decode(data, state.decode_opts) do
       {:error, error} ->
-        Logger.error(error)
+        Logger.error("error decoding response packet: #{inspect error}")
         {:noreply, state}
       {:ok, %Packet{type: :push, payload: payload}} ->
         push_impl(payload, state)
@@ -360,7 +374,7 @@ defmodule Erps.Client do
         GenServer.reply(from, {:error, reply})
         {:noreply, state}
       {:ok, %Packet{type: :error, payload: payload}} ->
-        Logger.error(payload)
+        Logger.error("error response from server: #{inspect payload}")
         {:noreply, state}
     end
   end
