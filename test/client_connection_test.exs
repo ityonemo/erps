@@ -26,16 +26,15 @@ defmodule ErpsTest.ClientConnectionTest do
     test "calls result in throws" do
       port = Enum.random(10_000..30_000)
       {:ok, client} = Client.start(port)
-      Process.monitor(client)
 
-      assert :timeout == (try do
+      error = try do
         GenServer.call(client, :foo, 300)
       catch
-        :exit, {reason, _} -> reason
-      end)
+        :exit, err ->
+          err
+      end
 
-      refute_receive {:DOWN, _, _, ^client, _}, 500
-      Process.exit(client, :kill)
+      assert {{%RuntimeError{}, _}, _} = error
     end
 
     test "casts don't fault" do
