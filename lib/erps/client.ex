@@ -346,7 +346,7 @@ defmodule Erps.Client do
     ref = :erlang.phash2(from)
 
     tcp_data = state.base_packet
-    |> struct(type: :call, payload: {from, call})
+    |> struct(type: :call, payload: {ref, call})
     |> Packet.encode(state.encode_opts)
 
     transport.send(state.socket, tcp_data)
@@ -360,7 +360,7 @@ defmodule Erps.Client do
 
   defp handle_call_response(reply, from, state = %{reply_cache: reply_cache}) do
     if is_map_key(reply_cache, from) do
-      GenServer.reply(from, {:error, reply})
+      GenServer.reply(reply_cache[from].from, reply)
       {:noreply, %{state | reply_cache: Map.delete(reply_cache, from)}}
     else
       {:noreply, state}
@@ -401,10 +401,9 @@ defmodule Erps.Client do
       {:ok, %Packet{type: :push, payload: payload}} ->
         push_impl(payload, state)
       {:ok, %Packet{type: :reply, payload: {reply, from}}} ->
-        GenServer.reply(from, reply)
-        {:noreply, state}
-      {:ok, %Packet{type: :error, payload: {reply, from}}} ->
         handle_call_response(reply, from, state)
+      {:ok, %Packet{type: :error, payload: {reply, from}}} ->
+        handle_call_response({:error, reply}, from, state)
       {:ok, %Packet{type: :error, payload: payload}} ->
         Logger.error("error response from server: #{inspect payload}")
         {:noreply, state}
