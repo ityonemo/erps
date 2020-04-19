@@ -16,3 +16,10 @@
 
 - crash for calls if it's not connected yet.
 - create `connected?` call
+
+## 0.3.0
+
+- switches to using an internal cache of hashed `GenServer.from` for
+  interchange between Client and Server.  This makes it possible to use
+  `Plug.Crypto.non_executable_binary_to_term/2` for unpickling values
+  on the server-side.
