@@ -33,3 +33,4 @@
 
 - (breaking) gives a custom way of changing the certificate inspection that
   provides access to socket directly.
+- prevent the connections list from growing really big

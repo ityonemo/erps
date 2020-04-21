@@ -383,7 +383,10 @@ defmodule Erps.Server do
     Process.send_after(self(), :accept, 0)
     with {:ok, socket} <- transport.accept(state.socket, 100),
          {:ok, upgrade} <- transport.handshake(socket, state.tls_opts) do
-      {:noreply, %{state | connections: [upgrade | state.connections]}}
+
+      new_connections = Enum.uniq([upgrade | state.connections])
+
+      {:noreply, %{state | connections: new_connections}}
     else
       _any -> {:noreply, state}
     end
