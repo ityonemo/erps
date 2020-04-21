@@ -28,3 +28,8 @@
 
 - adds an extra optional term to `Erps.Server.reply/2` which lets you
   call it from outside of the server loop, for example, in async calls.
+
+## 0.3.2
+
+- (breaking) gives a custom way of changing the certificate inspection that
+  provides access to socket directly.

@@ -251,6 +251,12 @@ defmodule Erps.Transport.Tls do
   this transport is useful when you have trusted clients and servers that are
   authenticated against each other and must have an encrypted channel over
   WAN.
+
+  extra options:
+  `:cert_verification` - an arity-2 function which gets passed the tls socket
+    and the raw certificate for custom inspection.  If the certificate is
+    rejected, then it should close the socket and output `{:error, term}`.
+    if it's accepted, then it should output `{:ok, socket}`
   """
 
   @behaviour Erps.Transport.Api
@@ -276,17 +282,17 @@ defmodule Erps.Transport.Tls do
   def handshake(socket, tls_opts!) do
     # instrument in a series of default tls options into the handshake.
     tls_opts! = Keyword.merge([
-      ip_verification_fun: &verify_peer_ip/2,
+      cert_verification: &no_verification/2,
       verify: :verify_peer,
       fail_if_no_peer_cert: true,
     ], tls_opts!)
 
     with {:ok, tls_socket} <- :ssl.handshake(socket, tls_opts!, 200),
          :ok <- :ssl.setopts(tls_socket, active: true),
-         {:ok, raw_certificate} <- :ssl.peercert(tls_socket),
-         {:ok, cert} <- X509.Certificate.from_der(raw_certificate),
-         :ok <- verify_peer_ip(socket, cert) do
-      {:ok, tls_socket}
+         {:ok, raw_certificate} <- :ssl.peercert(tls_socket) do
+
+      tls_opts![:cert_verification].(socket, raw_certificate)
+
     else
       any ->
         :gen_tcp.close(socket)
@@ -298,25 +304,8 @@ defmodule Erps.Transport.Tls do
   @spec transport_type :: :ssl
   def transport_type, do: :ssl
 
-  defp match_function({:ip, ip}, {:dNSName, _}, ip), do: true
-  defp match_function(_, _, _), do: false
-
-  @spec single_ip_check(:inet.ip_address) ::
-    [match_fun: (({:ip, :inet.ip_address}, {:dNSName, charlist}) -> boolean)]
-  @doc """
-  (client) a specialized function that generates a match function option used to
-  verify that the targetted server is bound to a single ip address.
-
-  should be used as in as the `:customize_hostname_check` option for clients
-  """
-  def single_ip_check(ip), do: [match_fun: &match_function(&1, &2, ip)]
-
-  @peer_dns {2, 5, 29, 17}
-  defp verify_peer_ip(socket, cert) do
-    {:Extension, @peer_dns, false, [dNSName: cert_peer_ip]} =
-      X509.Certificate.extension(cert, @peer_dns)
-    {:ok, {peer, _port}} = :inet.peername(socket)
-    if :inet.ntoa(peer) == cert_peer_ip, do: :ok, else: {:error, "invalid peername"}
+  defp no_verification(socket, _raw_certificate) do
+    {:ok, socket}
   end
 end
 
