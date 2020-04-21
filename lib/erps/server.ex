@@ -319,12 +319,17 @@ defmodule Erps.Server do
   @doc """
   sends a reply to either a local process or a remotely connected client.
 
+  The Erps Server holds connection information, so you must supply the Erps
+  Server pid; though you may use the arity-2 form if you call from within
+  the action loop of the Erps Server itself, in which case it acts like
+  `GenServer.reply/2`
+
   naturally takes the `from` value passed in to the second parameter of
   `c:handle_call/3`.
   """
-  @spec reply(from, term) :: :ok
-  def reply(from, reply) do
-    send(self(), {:"$reply", from, reply})
+  @spec reply(via :: GenServer.server, from, term) :: :ok
+  def reply(via \\ self(), from, reply) do
+    send(via, {:"$reply", from, reply})
     :ok
   end
 

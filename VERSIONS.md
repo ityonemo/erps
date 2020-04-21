@@ -23,3 +23,8 @@
   interchange between Client and Server.  This makes it possible to use
   `Plug.Crypto.non_executable_binary_to_term/2` for unpickling values
   on the server-side.
+
+## 0.3.1
+
+- adds an extra optional term to `Erps.Server.reply/2` which lets you
+  call it from outside of the server loop, for example, in async calls.
