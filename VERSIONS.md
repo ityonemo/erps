@@ -39,3 +39,8 @@
 
 - (breaking) change around the names of server options and improve documentation.
 - add in `recv/2,3` callbacks to the transport APIs.
+
+## 0.3.4
+
+- change API to not use a raising upgrade.
+- don't default to using `active: true` connections in the API.
