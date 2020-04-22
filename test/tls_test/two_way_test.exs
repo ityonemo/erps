@@ -49,28 +49,17 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
 
   # we have to use a custom match function to verify server-side that
   # the client is using a certificate that we are ready to accept.
-  @extension_code {2, 5, 29, 17}
+  @dns_name {2, 5, 29, 17}
   def server_match_fun(socket, raw_cert) do
-    {:ok,
-      {:OTPCertificate,
-        {:OTPTBSCertificate,
-          _version, _value, _tbs_cert_sig_algo,
-          _cacert_rdn_sequence,
-          _validity,
-          _cert_rdn_sequence,
-          _public_key_info,
-          _novalue1,
-          _novalue2,
-          extension_list},
-        _cert_sig_algo,
-        _binary}} = X509.Certificate.from_der(raw_cert)
+    {:ok, cert} = X509.Certificate.from_der(raw_cert)
+
+    # retrieve the DNSname field and attempt to match it.
+    {:Extension, _, _, [dNSName: dnsname]} =
+      X509.Certificate.extension(cert, @dns_name)
 
     {:ok, {ip_addr, _}} = :inet.peername(socket)
 
-    if Enum.find_value(extension_list, fn
-      {:Extension, @extension_code, _, [dNSName: dnsname]} -> dnsname
-      _ -> false
-    end) == :inet.ntoa(ip_addr) do
+    if dnsname == :inet.ntoa(ip_addr) do
       {:ok, socket}
     else
       {:error, "validation fail"}

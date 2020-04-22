@@ -210,6 +210,7 @@ defmodule Erps.Client do
     - `:cacertfile` path to the certificate of your signing authority. (required)
     - `:certfile`   path to the server certificate file. (required for `Erps.Transport.Tls`)
     - `:keyfile`    path to the signing key. (required for `Erps.Transport.Tls`)
+    - `:
   - `:reply_ttl`    the maximum amount of time that client should wait for `call`
     replies.  Units in ms, defaults to `5000`.
 
