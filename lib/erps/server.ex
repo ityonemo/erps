@@ -382,13 +382,17 @@ defmodule Erps.Server do
   def handle_info(:accept, state = %{transport: transport}) do
     Process.send_after(self(), :accept, 0)
     with {:ok, socket} <- transport.accept(state.socket, 100),
-         {:ok, upgrade} <- transport.handshake(socket, state.tls_opts) do
+         {_, {:ok, upgrade}} <- {socket, transport.handshake(socket, state.tls_opts)} do
 
       new_connections = Enum.uniq([upgrade | state.connections])
 
       {:noreply, %{state | connections: new_connections}}
     else
-      _any -> {:noreply, state}
+      {socket, {:error, _}} ->
+        :gen_tcp.close(socket)
+        {:noreply, state}
+      any ->
+        {:noreply, state}
     end
   end
   def handle_info({ttype, socket, bin_data},

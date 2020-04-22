@@ -47,7 +47,42 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     Path.join(ErpsTest.TlsFiles.path(), file)
   end
 
-  @localhost {127, 0, 0, 1}
+  # we have to use a custom match function to verify server-side that
+  # the client is using a certificate that we are ready to accept.
+  @extension_code {2, 5, 29, 17}
+  def server_match_fun(socket, raw_cert) do
+    {:ok,
+      {:OTPCertificate,
+        {:OTPTBSCertificate,
+          _version, _value, _tbs_cert_sig_algo,
+          _cacert_rdn_sequence,
+          _validity,
+          _cert_rdn_sequence,
+          _public_key_info,
+          _novalue1,
+          _novalue2,
+          extension_list},
+        _cert_sig_algo,
+        _binary}} = X509.Certificate.from_der(raw_cert)
+
+    {:ok, {ip_addr, _}} = :inet.peername(socket)
+
+    if Enum.find_value(extension_list, fn
+      {:Extension, @extension_code, _, [dNSName: dnsname]} -> dnsname
+      _ -> false
+    end) == :inet.ntoa(ip_addr) do
+      {:ok, socket}
+    else
+      {:error, "validation fail"}
+    end
+  end
+
+  # because we're not using true FQDNs to sign our test-mode certs,
+  # we have to use this function to customize our hostname check.
+  def client_match_fun({:ip, ip}, {:dNSName, dns}) do
+    :inet.ntoa(ip) == dns
+  end
+  def client_match_fun(_, _), do: false
 
   describe "for two way tls" do
     setup do
@@ -56,9 +91,12 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         tls_opts: [
           cacertfile: path("rootCA.pem"),
           certfile:   path("server.cert"),
-          keyfile:    path("server.key")
+          keyfile:    path("server.key"),
+          cert_verification: &server_match_fun/2
         ])
+
       {:ok, port} = Server.port(server)
+
       {:ok, client} = Client.start_link(
         port: port,
         transport: Tls,
@@ -66,7 +104,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
           cacertfile: path("rootCA.pem"),
           certfile:   path("client.cert"),
           keyfile:    path("client.key"),
-          customize_hostname_check: Tls.single_ip_check(@localhost),
+          customize_hostname_check: [match_fun: &client_match_fun/2],
           reuse_sessions: false
         ])
 
@@ -80,6 +118,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       {:ok, port: port, verify: verify_good_client}
     end
 
+    @tag :foo
     test "the happy path works", %{verify: verify} do
       verify.()
     end
@@ -123,7 +162,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
             cacertfile: path("wrong-rootCA.pem"),
             certfile:   path("wrong-root.cert"),
             keyfile:    path("wrong-root.key"),
-            customize_hostname_check: Tls.single_ip_check(@localhost)
+            customize_hostname_check: [match_fun: &client_match_fun/2],
           ])
         Process.sleep(100)
       end)
@@ -135,7 +174,8 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     end
 
     test "client can't connect with valid cert rooted to wrong root CA", %{port: port, verify: verify} do
-      log = capture_log(fn ->
+
+      log = capture_log fn ->
         assert {:error, _} = Client.start(
           port: port,
           transport: Tls,
@@ -143,10 +183,11 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
             cacertfile: path("rootCA.pem"),
             certfile:   path("wrong-root.cert"),
             keyfile:    path("wrong-root.key"),
-            customize_hostname_check: Tls.single_ip_check(@localhost)
+            customize_hostname_check: [match_fun: &client_match_fun/2],
           ])
+
         Process.sleep(100)
-      end)
+      end
 
       assert log =~ "Unknown CA"
 
@@ -162,7 +203,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
           cacertfile: path("rootCA.pem"),
           certfile:   path("client.cert"),
           keyfile:    path("wrong-key.key"),
-          customize_hostname_check: Tls.single_ip_check(@localhost),
+          customize_hostname_check: [match_fun: &client_match_fun/2],
           reuse_sessions: false
         ])
       end)
@@ -180,13 +221,13 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
           cacertfile: path("rootCA.pem"),
           certfile:   path("wrong-host.cert"),
           keyfile:    path("wrong-host.key"),
-          customize_hostname_check: Tls.single_ip_check(@localhost),
+          customize_hostname_check: [match_fun: &client_match_fun/2],
           reuse_sessions: false
         ])
       |> case do
         {:ok, bad_client} ->
           Process.monitor(bad_client)
-          assert_receive {:DOWN, _, :process, ^bad_client, :ssl_closed}
+          assert_receive {:DOWN, _, :process, ^bad_client, :ssl_closed}, 500
         {:error, _any} ->
           :ok
       end
@@ -270,7 +311,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
             cacertfile: path("rootCA.pem"),
             certfile:   path("client.cert"),
             keyfile:    path("client.key"),
-            customize_hostname_check: Tls.single_ip_check(@localhost),
+            customize_hostname_check: [match_fun: &client_match_fun/2],
             reuse_sessions: false])
         Process.sleep(100)
       end)
@@ -288,20 +329,15 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
         ])
       {:ok, port} = Server.port(server)
 
-      log = capture_log(fn ->
-        assert {:error, _} = Client.start(
-          port: port,
-          transport: Tls,
-          tls_opts: [
-            cacertfile: path("rootCA.pem"),
-            certfile:   path("client.cert"),
-            keyfile:    path("client.key"),
-            customize_hostname_check: Tls.single_ip_check(@localhost),
-            reuse_sessions: false])
-        Process.sleep(100)
-      end)
-
-      assert log =~ "Decrypt Error"
+      assert {:error, _} = Client.start(
+        port: port,
+        transport: Tls,
+        tls_opts: [
+          cacertfile: path("rootCA.pem"),
+          certfile:   path("client.cert"),
+          keyfile:    path("client.key"),
+          customize_hostname_check: [match_fun: &client_match_fun/2],
+          reuse_sessions: false])
     end
   end
 

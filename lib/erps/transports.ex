@@ -68,6 +68,18 @@ defmodule Erps.Transport.Api do
   :: {:ok, socket} | {:error, any}
 
   @doc """
+  (server) blocks the server waiting for a connection request until some data
+  comes in.
+  """
+  @callback recv(socket, length :: non_neg_integer) :: {:ok, binary} | {:error, any}
+
+  @doc """
+  (server) Like `b:recv/2` but with a timeout so the server doesn't block
+  indefinitely.
+  """
+  @callback recv(socket, length :: non_neg_integer, timeout) :: {:ok, binary} | {:error, any}
+
+  @doc """
   (server) upgrades the TCP connection to an authenticated, encrypted
   connection.
 
@@ -85,7 +97,7 @@ defmodule Erps.Transport.Api do
   (both) provides a hint to `c:GenServer.handle_info/2` as to what sorts of
   active packet messages to expect.
   """
-  @callback transport_type() :: :tcp | :ssl
+  @callback transport_type() :: :tcp | :ssl | :none
 
   @doc """
   a generic "listen" which calls `:gen_tcp.listen/2` that filters out any
@@ -106,12 +118,29 @@ defmodule Erps.Transport.Tcp do
   @behaviour Erps.Transport.Api
   alias Erps.Transport.Api
 
+  @type socket :: Erps.Transport.Api.socket
+
+  @spec listen(:inet.port_number, keyword) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.listen/2`."
   defdelegate listen(port, opts), to: Api
+
+  @spec accept(socket, timeout) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.accept/2`."
   defdelegate accept(sock, timeout), to: :gen_tcp
+
+  @spec connect(term, :inet.port_number, keyword) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.connect/3`."
   defdelegate connect(host, port, opts), to: :gen_tcp
+
+  @spec recv(socket, non_neg_integer) :: {:ok, binary} | {:error, term}
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/2`, via `:gen_tcp.recv/2."
+  defdelegate recv(sock, length), to: :gen_tcp
+
+  @spec recv(socket, non_neg_integer, timeout) :: {:ok, binary} | {:error, term}
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:gen_tcp.recv/3."
+  defdelegate recv(sock, length, timeout), to: :gen_tcp
+
+  @spec send(socket, iodata) :: :ok | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.send/2`, via `:gen_tcp.send/2`"
   defdelegate send(sock, content), to: :gen_tcp
 
@@ -192,10 +221,25 @@ defmodule Erps.Transport.OneWayTls do
     File.exists?(filepath) || raise "#{key} not a valid file"
   end
 
+  @type socket :: Erps.Transport.Api.socket
+
+  @spec accept(socket, timeout) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.accept/2`."
   defdelegate accept(sock, timeout), to: :gen_tcp
+
+  @spec connect(term, :inet.port_number, keyword) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.connect/3`."
   defdelegate connect(host, port, opts), to: :gen_tcp
+
+  @spec recv(socket, non_neg_integer) :: {:ok, binary} | {:error, term}
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/2`, via `:ssl.recv/2."
+  defdelegate recv(sock, length), to: :ssl
+
+  @spec recv(socket, non_neg_integer, timeout) :: {:ok, binary} | {:error, term}
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:ssl.recv/3."
+  defdelegate recv(sock, length, timeout), to: :ssl
+
+  @spec send(socket, iodata) :: :ok | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.send/2`, via `:ssl.send/2`"
   defdelegate send(sock, content), to: :ssl
 
@@ -262,16 +306,35 @@ defmodule Erps.Transport.Tls do
   @behaviour Erps.Transport.Api
   alias Erps.Transport.Api
 
+  @type socket :: Erps.Transport.Api.socket
+
+  @spec listen(:inet.port_number, keyword) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.listen/2`, via `Erps.Transport.OneWayTls.listen/2`."
   defdelegate listen(port, opts), to: Erps.Transport.OneWayTls
+
+  @spec accept(socket, timeout) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.accept/2`."
   defdelegate accept(sock, timeout), to: :gen_tcp
+
+  @spec connect(term, :inet.port_number, keyword) :: {:ok, socket} | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.connect/3`."
   defdelegate connect(host, port, opts), to: :gen_tcp
+
+  @spec send(socket, iodata) :: :ok | {:error, term}
   @doc "Callback implementation for `c:Erps.Transport.Api.send/2`, via `:ssl.send/2`."
   defdelegate send(sock, content), to: :ssl
+
+  @spec upgrade!(socket, keyword) :: socket | no_return
   @doc "Callback implementation for `c:Erps.Transport.Api.upgrade!/2`, via `Erps.Transport.OneWayTls.upgrade!/2`."
   defdelegate upgrade!(sock, opts), to: Erps.Transport.OneWayTls
+
+  @spec recv(socket, non_neg_integer) :: {:ok, binary} | {:error, term}
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/2`, via `:ssl.recv/2`."
+  defdelegate recv(sock, length), to: :ssl
+
+  @spec recv(socket, non_neg_integer, timeout) :: {:ok, binary} | {:error, term}
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:ssl.recv/3`."
+  defdelegate recv(sock, length, timeout), to: :ssl
 
   @impl true
   @spec handshake(:inet.socket, keyword) :: {:ok, Api.socket} | {:error, any}
@@ -304,7 +367,7 @@ defmodule Erps.Transport.Tls do
   @spec transport_type :: :ssl
   def transport_type, do: :ssl
 
-  defp no_verification(socket, _raw_certificate) do
+  defp no_verification(socket, _raw_cert) do
     {:ok, socket}
   end
 end
@@ -318,6 +381,8 @@ defmodule Erps.Transport.None do
 
   @behaviour Erps.Transport.Api
 
+  @type socket :: Erps.Transport.Api.socket
+
   @impl true
   @doc false
   def listen(_port, _opts), do: {:ok, self()}
@@ -328,6 +393,13 @@ defmodule Erps.Transport.None do
   @impl true
   @doc false
   def connect(_host, _port, _opts), do: {:ok, self()}
+
+  @impl true
+  def recv(_sock, _length), do: {:ok, ""}
+
+  @impl true
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:ssl.recv/3`."
+  def recv(_sock, _length, _timeout), do: {:ok, ""}
 
   @impl true
   @doc false
@@ -342,6 +414,6 @@ defmodule Erps.Transport.None do
   def handshake(socket, _opts), do: {:ok, socket}
 
   @impl true
-  @spec transport_type :: :tcp
-  def transport_type, do: :tcp
+  @spec transport_type :: :none
+  def transport_type, do: :none
 end
