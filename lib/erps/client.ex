@@ -225,7 +225,8 @@ defmodule Erps.Client do
 
   @default_options [
     keepalive: @default_keepalive,
-    reconnect: @default_reconnect]
+    reconnect: @default_reconnect,
+    tls_opts: []]
 
   @impl true
   def init({module, start, opts}) do
@@ -250,8 +251,10 @@ defmodule Erps.Client do
     |> Keyword.merge(instance_options)
     |> Keyword.merge(module: module)
 
+    # note: you have to always connect to an ssl connections using active: false, otherwise
+    # TLS synchronization handshake will fail.
     with {:ok, socket} <- transport.connect(server, port, [:binary, active: false]),
-         upgraded <- transport.upgrade!(socket, state_params[:tls_opts]) do
+         {:ok, upgraded} <- transport.upgrade(socket, [active: true] ++ state_params[:tls_opts]) do
       Process.send_after(self(), :"$keepalive", state_params[:keepalive])
       start
       |> module.init()
@@ -418,14 +421,16 @@ defmodule Erps.Client do
     {:stop, closed, state}
   end
   def handle_info(:"$reconnect", state = %{socket: nil, transport: transport}) do
-    case transport.connect(state.server, state.port, [:binary, active: true]) do
-      {:ok, socket} ->
-        upgraded = transport.upgrade!(socket, state.tls_opts)
-        Process.send_after(self(), :"$keepalive", state.keepalive)
-        {:noreply, %{state | socket: upgraded}}
+    with {:ok, socket} <- transport.connect(state.server, state.port, [:binary, active: false]),
+         {:ok, upgraded} <- transport.upgrade(socket, [active: true] ++ state.tls_opts) do
+      Process.send_after(self(), :"$keepalive", state.keepalive)
+      {:noreply, %{state | socket: upgraded}} 
+    else
       {:error, :econnrefused} ->
         Process.send_after(self(), :"$reconnect", state.reconnect)
         {:noreply, state}
+      {:error, error} ->
+        {:stop, error}
     end
   end
   def handle_info(:"$keepalive", state = %{transport: transport}) do

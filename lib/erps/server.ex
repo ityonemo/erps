@@ -259,7 +259,7 @@ defmodule Erps.Server do
       specified -> specified
     end
 
-    listen_opts = [:binary, active: false, reuseaddr: true, tls_opts: opts[:tls_opts]]
+    listen_opts = [:binary, active: true, reuseaddr: true, tls_opts: opts[:tls_opts]]
 
     case transport.listen(port, listen_opts) do
       {:ok, socket} ->
