@@ -210,7 +210,9 @@ defmodule Erps.Client do
     - `:cacertfile` path to the certificate of your signing authority. (required)
     - `:certfile`   path to the server certificate file. (required for `Erps.Transport.Tls`)
     - `:keyfile`    path to the signing key. (required for `Erps.Transport.Tls`)
-    - `:
+    - `:customize_hostname_check` it's very likely that you might get tls failures if
+                    you are relying on the OTP builtin hostname checks.  This otp feature
+                    lets you override it for something custom.
   - `:reply_ttl`    the maximum amount of time that client should wait for `call`
     replies.  Units in ms, defaults to `5000`.
 

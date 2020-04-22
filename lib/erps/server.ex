@@ -185,6 +185,38 @@ defmodule Erps.Server do
     - `:cacertfile` path to the certificate of your signing authority.
     - `:certfile`   path to the server certificate file.
     - `:keyfile`    path to the signing key.
+    - `:client_verify_fun` see below.
+
+  ### client_verify_fun
+
+  Erlang/OTP doesn't provide a simple mechanism for a server in a two way ssl
+  connection to verify the identity of the client (which you may want in certain
+  situations where you own both ends of the connection but not the intermediate
+  transport layer).  To handle this corner case, we provide the `client_verify_fun`
+  option, which expects a 2-arity lambda.  This lambda is passed the socket and
+  the raw certificate for examination, and expects `{:ok, socket}` if
+  it succeeds or `{:error, reason}` if it fails.
+
+  #### client_verify_fun Example
+
+  Here is an example of an arity-2 lambda that will check to see if the cert-
+  provided FQDN matches the fqdn in the @fqdn attribute
+
+  ```
+  @fqdn "my.domain.name"
+  @dns_name {2, 5, 29, 17}
+  def client_verify(socket, raw_cert) do
+    fqdn = String.to_charlist(@fqdn)
+
+    with {:ok, cert} <- X509.Certificate.from_der(raw_cert),
+         {:Extension, _, _, [dNSName: ^fqdn]} <-
+            X509.Certificate.extension(raw_cert, @dns_name) do
+      {:ok, socket}
+    else
+      _ -> {:error, "validation fail"}
+    end
+  end
+  ```
 
   see `GenServer.start_link/3` for a description of further options.
   """
@@ -391,7 +423,7 @@ defmodule Erps.Server do
       {socket, {:error, _}} ->
         :gen_tcp.close(socket)
         {:noreply, state}
-      any ->
+      _any ->
         {:noreply, state}
     end
   end

@@ -34,3 +34,8 @@
 - (breaking) gives a custom way of changing the certificate inspection that
   provides access to socket directly.
 - prevent the connections list from growing really big
+
+## 0.3.3
+
+- (breaking) change around the names of server options and improve documentation.
+- add in `recv/2,3` callbacks to the transport APIs.

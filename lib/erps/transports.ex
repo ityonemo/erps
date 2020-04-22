@@ -133,11 +133,11 @@ defmodule Erps.Transport.Tcp do
   defdelegate connect(host, port, opts), to: :gen_tcp
 
   @spec recv(socket, non_neg_integer) :: {:ok, binary} | {:error, term}
-  @doc "Callback implementation for `c:Erps.Transport.Api.recv/2`, via `:gen_tcp.recv/2."
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/2`, via `:gen_tcp.recv/2`."
   defdelegate recv(sock, length), to: :gen_tcp
 
   @spec recv(socket, non_neg_integer, timeout) :: {:ok, binary} | {:error, term}
-  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:gen_tcp.recv/3."
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:gen_tcp.recv/3`."
   defdelegate recv(sock, length, timeout), to: :gen_tcp
 
   @spec send(socket, iodata) :: :ok | {:error, term}
@@ -232,11 +232,11 @@ defmodule Erps.Transport.OneWayTls do
   defdelegate connect(host, port, opts), to: :gen_tcp
 
   @spec recv(socket, non_neg_integer) :: {:ok, binary} | {:error, term}
-  @doc "Callback implementation for `c:Erps.Transport.Api.recv/2`, via `:ssl.recv/2."
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/2`, via `:ssl.recv/2`."
   defdelegate recv(sock, length), to: :ssl
 
   @spec recv(socket, non_neg_integer, timeout) :: {:ok, binary} | {:error, term}
-  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:ssl.recv/3."
+  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:ssl.recv/3`."
   defdelegate recv(sock, length, timeout), to: :ssl
 
   @spec send(socket, iodata) :: :ok | {:error, term}
@@ -297,10 +297,7 @@ defmodule Erps.Transport.Tls do
   WAN.
 
   extra options:
-  `:cert_verification` - an arity-2 function which gets passed the tls socket
-    and the raw certificate for custom inspection.  If the certificate is
-    rejected, then it should close the socket and output `{:error, term}`.
-    if it's accepted, then it should output `{:ok, socket}`
+  - `:client_verify_fun` see: `Erps.Server`
   """
 
   @behaviour Erps.Transport.Api
