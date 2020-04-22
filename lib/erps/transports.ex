@@ -345,7 +345,7 @@ defmodule Erps.Transport.Tls do
   def handshake(socket, tls_opts!) do
     # instrument in a series of default tls options into the handshake.
     tls_opts! = Keyword.merge([
-      cert_verification: &no_verification/2,
+      client_verify_fun: &no_verification/2,
       verify: :verify_peer,
       fail_if_no_peer_cert: true,
     ], tls_opts!)
@@ -354,7 +354,7 @@ defmodule Erps.Transport.Tls do
          :ok <- :ssl.setopts(tls_socket, active: true),
          {:ok, raw_certificate} <- :ssl.peercert(tls_socket) do
 
-      tls_opts![:cert_verification].(socket, raw_certificate)
+      tls_opts![:client_verify_fun].(socket, raw_certificate)
 
     else
       any ->

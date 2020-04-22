@@ -81,7 +81,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
           cacertfile: path("rootCA.pem"),
           certfile:   path("server.cert"),
           keyfile:    path("server.key"),
-          cert_verification: &server_match_fun/2
+          client_verify_fun: &server_match_fun/2
         ])
 
       {:ok, port} = Server.port(server)
@@ -107,7 +107,6 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       {:ok, port: port, verify: verify_good_client}
     end
 
-    @tag :foo
     test "the happy path works", %{verify: verify} do
       verify.()
     end
