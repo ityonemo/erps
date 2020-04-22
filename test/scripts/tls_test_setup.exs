@@ -37,4 +37,7 @@ ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-root", wrong_ca, wrong_ca_key)
 defmodule ErpsTest.TlsFiles do
   @path tempdir
   def path, do: @path
+  def cleanup do
+    File.rm_rf!(@path)
+  end
 end
