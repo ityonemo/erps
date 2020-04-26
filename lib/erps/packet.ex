@@ -8,7 +8,7 @@ defmodule Erps.Packet do
     hmac_key:     <<0::16 * 8>>,
     signature:    <<0::32 * 8>>,
     payload_size: 0,
-    payload:      "",
+    payload:      nil,
     complete?:    false,
   ]
 
@@ -120,7 +120,7 @@ defmodule Erps.Packet do
     struct_so_far = %__MODULE__{
       type: @code_to_type[code],
       version: version,
-      identifier: identifier,
+      identifier: trim(identifier),
       hmac_key: hmac_key,
       signature: signature,
       payload_size: :erlang.size(payload),
@@ -128,10 +128,10 @@ defmodule Erps.Packet do
 
     cond do
       # verify that we are using the same remote protocol.
-      identifier_mismatches?(srv_identifier, identifier) ->
+      identifier_mismatches?(srv_identifier, struct_so_far) ->
         {:error, "wrong identifier"}
       # verify that we are using an acceptable version
-      version_mismatches?(version_req, version) ->
+      version_mismatches?(version_req, struct_so_far) ->
         {:error, "incompatible version"}
       # if verified, go ahead and generate the packet.
       verification ->
@@ -151,13 +151,13 @@ defmodule Erps.Packet do
   end
 
   defp identifier_mismatches?(nil, _), do: false
-  defp identifier_mismatches?(srv_identifier, pkt_identifier) do
-    srv_identifier != trim(pkt_identifier)
+  defp identifier_mismatches?(srv_identifier, struct_so_far) do
+    srv_identifier != struct_so_far.identifier
   end
 
   defp version_mismatches?(nil, _), do: false
-  defp version_mismatches?(version_req, version) do
-    not Version.match?(version, version_req)
+  defp version_mismatches?(version_req, struct_so_far) do
+    not Version.match?(struct_so_far.version, version_req)
   end
 
   ##############################################################################
