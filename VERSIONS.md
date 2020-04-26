@@ -44,3 +44,20 @@
 
 - change API to not use a raising upgrade.
 - don't default to using `active: true` connections in the API.
+
+## 0.4.0
+
+- reconfigure packet structure to allow for data that exceeds the MTU.
+- disable (for now) HMAC signing and checking for verification
+- switch to `active: false` strategy
+- refactor away the `OneWayTls` transport mechanism (for now)
+- make reply() compatible with GenServer.reply()
+
+## Planned features:
+
+- Daemon strategy which will allow for failure-isolated inbound
+  connections
+- reactivation of HMAC signing with better crypto tests
+- rebuild OneWayTls strategy
+- integration of `https://github.com/fishcakez/connection` library
+- use ETS tables to manage connection information

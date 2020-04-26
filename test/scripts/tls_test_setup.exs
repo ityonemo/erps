@@ -3,11 +3,17 @@ require Logger
 tempdir_name = Base.encode16(:crypto.strong_rand_bytes(32))
 tempdir = Path.join([System.tmp_dir!(), ".erps-test", tempdir_name])
 
+defmodule ErpsTest.TlsFiles do
+  @path tempdir
+  def path, do: @path
+  def cleanup do
+    File.rm_rf!(@path)
+  end
+end
+
 ExUnit.after_suite(fn %{failures: 0} ->
   # only clean up our temporary directory if it was succesful
-  System.tmp_dir!()
-  |> Path.join(".erps-test")
-  |> File.rm_rf!()
+  ErpsTest.TlsFiles.cleanup()
   :ok
   _ -> :ok
 end)
@@ -34,10 +40,3 @@ ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-host", ca, ca_key, host: "1.1.
 # generate server authentications
 ErpsTest.TlsFileGen.generate_cert(tempdir, "wrong-root", wrong_ca, wrong_ca_key)
 
-defmodule ErpsTest.TlsFiles do
-  @path tempdir
-  def path, do: @path
-  def cleanup do
-    File.rm_rf!(@path)
-  end
-end

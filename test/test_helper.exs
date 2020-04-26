@@ -4,7 +4,3 @@ __ENV__.file
 |> Code.require_file
 
 ExUnit.start()
-
-ExUnit.after_suite(fn _ ->
-  ErpsTest.TlsFiles.cleanup()
-end)

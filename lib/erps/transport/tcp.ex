@@ -58,8 +58,9 @@ defmodule Erps.Transport.Tcp do
 
   Callback implementation for `c:Erps.Transport.Api.handshake/2`.
   """
-  def handshake(socket, opts) do
-    case :inet.setopts(socket, opts) do
+  def handshake(socket, opts!) do
+    opts! = Keyword.take(opts!, [:active])
+    case :inet.setopts(socket, opts!) do
       :ok -> {:ok, socket}
       any -> any
     end

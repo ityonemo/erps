@@ -254,8 +254,9 @@ defmodule Erps.Client do
     # note: you have to always connect to an ssl connections using active: false, otherwise
     # TLS synchronization handshake will fail.
     with {:ok, socket} <- transport.connect(server, port, [:binary, active: false]),
-         {:ok, upgraded} <- transport.upgrade(socket, [active: true] ++ state_params[:tls_opts]) do
+         {:ok, upgraded} <- transport.upgrade(socket, [active: false] ++ state_params[:tls_opts]) do
       Process.send_after(self(), :"$keepalive", state_params[:keepalive])
+      recv_loop()
       start
       |> module.init()
       |> process_init(state_params ++ [socket: upgraded])
@@ -397,12 +398,16 @@ defmodule Erps.Client do
     {:noreply, state}
   end
 
+  # TODO: make this call the transport API
   @closed [:tcp_closed, :ssl_closed]
 
   @impl true
   @spec handle_info(info :: term, state) :: noreply_response
-  def handle_info({ttype, socket, data}, state = %{socket: socket, transport_type: ttype})do
-    case Packet.decode(data, state.decode_opts) do
+  def handle_info(:recv, state = %{transport: transport, socket: socket}) do
+    recv_loop()
+    case Packet.get_data(transport, socket, state.decode_opts) do
+      {:error, :timeout} ->
+        {:noreply, state}
       {:error, error} ->
         Logger.error("error decoding response packet: #{inspect error}")
         {:noreply, state}
@@ -423,8 +428,9 @@ defmodule Erps.Client do
   def handle_info(:"$reconnect", state = %{socket: nil, transport: transport}) do
     with {:ok, socket} <- transport.connect(state.server, state.port, [:binary, active: false]),
          {:ok, upgraded} <- transport.upgrade(socket, [active: true] ++ state.tls_opts) do
+      recv_loop()
       Process.send_after(self(), :"$keepalive", state.keepalive)
-      {:noreply, %{state | socket: upgraded}} 
+      {:noreply, %{state | socket: upgraded}}
     else
       {:error, :econnrefused} ->
         Process.send_after(self(), :"$reconnect", state.reconnect)
@@ -471,6 +477,15 @@ defmodule Erps.Client do
     if function_exported?(module, :terminate, 2) do
       module.terminate(reason, state.data)
     end
+  end
+
+  #############################################################################
+  ## convenience functions
+
+  @recv_timeout 100
+
+  defp recv_loop do
+    Process.send_after(self(), :recv, @recv_timeout)
   end
 
   #############################################################################

@@ -137,7 +137,7 @@ defmodule Erps.Server do
 
   alias Erps.Packet
 
-  defstruct [:module, :data, :port, :socket, :decode_opts, :filter, :transport_type,
+  defstruct [:module, :data, :port, :socket, :decode_opts, :filter,
     tls_opts: [],
     transport: @default_transport,
     connections: []]
@@ -151,7 +151,6 @@ defmodule Erps.Server do
     socket:      :inet.socket,
     decode_opts: keyword,
     filter:      filter_fn
-
   }
 
   @behaviour GenServer
@@ -259,17 +258,18 @@ defmodule Erps.Server do
       specified -> specified
     end
 
-    listen_opts = [:binary, active: true, reuseaddr: true, tls_opts: opts[:tls_opts]]
+    listen_opts = [:binary, reuseaddr: true, active: false, tls_opts: opts[:tls_opts]]
 
     case transport.listen(port, listen_opts) do
       {:ok, socket} ->
         server_opts = Keyword.merge(opts,
-          module: module, port: port, socket: socket, decode_opts: decode_opts,
-          filter: filter, transport: transport,
-          transport_type: transport.transport_type())
+          module: module, port: port, socket: socket,
+          decode_opts: decode_opts,
+          filter: filter, transport: transport)
 
         # kick off the accept loop.
-        Process.send_after(self(), :accept, 0)
+        accept_loop()
+
         param
         |> module.init
         |> process_init(server_opts)
@@ -412,11 +412,14 @@ defmodule Erps.Server do
   @impl true
   @spec handle_info(info :: term, state) :: noreply_response
   def handle_info(:accept, state = %{transport: transport}) do
-    Process.send_after(self(), :accept, 0)
+    accept_loop()
     with {:ok, socket} <- transport.accept(state.socket, 100),
          {_, {:ok, upgrade}} <- {socket, transport.handshake(socket, state.tls_opts)} do
 
       new_connections = Enum.uniq([upgrade | state.connections])
+
+      # immediately kick off the recv loop.
+      recv_loop()
 
       {:noreply, %{state | connections: new_connections}}
     else
@@ -427,34 +430,10 @@ defmodule Erps.Server do
         {:noreply, state}
     end
   end
-  def handle_info({ttype, socket, bin_data},
-      state = %{module: module, filter: filter, transport: transport, transport_type: ttype}) do
-
-    case Packet.decode(bin_data, state.decode_opts) do
-      {:ok, %Packet{type: :keepalive}} ->
-        {:noreply, state}
-      {:ok, %Packet{type: :call, payload: {from, data}}} ->
-        remote_from = {:remote, socket, from}
-        unless filter.(data, :call), do: throw {:error, "filtered"}
-
-        data
-        |> module.handle_call(remote_from, state.data)
-        |> process_call(remote_from, state)
-      {:ok, %Packet{type: :cast, payload: data}} ->
-
-        unless filter.(data, :cast), do: throw {:error, "filtered"}
-
-        data
-        |> module.handle_cast(state.data)
-        |> process_noreply(state)
-      e = {:error, _any} ->
-        throw e
-    end
-  catch
-    {:error, any} ->
-      tcp_data = Packet.encode(%Packet{type: :error, payload: any})
-      transport.send(socket, tcp_data)
-      {:noreply, state}
+  def handle_info(:recv, state) do
+    state.connections
+    |> Enum.each(&poll_connection(&1, state))
+    {:noreply, state}
   end
   def handle_info({closed, port}, state) when closed in @closed do
     {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
@@ -484,6 +463,52 @@ defmodule Erps.Server do
     if function_exported?(module, :terminate, 2) do
       module.terminate(reason, state.data)
     end
+  end
+
+  #############################################################################
+  ## CONVENIENCE FUNCTIONS
+
+  defp accept_loop do
+    Process.send_after(self(), :accept, 0)
+  end
+
+  defp recv_loop do
+    Process.send_after(self(), :recv, 0)
+  end
+
+  defp poll_connection(socket, state = %{module: module,
+                                         filter: filter,
+                                         transport: transport}) do
+    case Packet.get_data(transport, socket, state.decode_opts) do
+      {:ok, %Packet{type: :keepalive}} ->
+        {:noreply, state}
+
+      {:ok, %Packet{type: :call, payload: {from, data}}} ->
+        remote_from = {:remote, socket, from}
+
+        unless filter.(data, :call), do: throw {:error, "filtered"}
+
+        data
+        |> module.handle_call(remote_from, state.data)
+        |> process_call(remote_from, state)
+
+      {:ok, %Packet{type: :cast, payload: data}} ->
+        unless filter.(data, :cast), do: throw {:error, "filtered"}
+
+        data
+        |> module.handle_cast(state.data)
+        |> process_noreply(state)
+      {:error, :timeout} ->
+        {:noreply, state}
+      e = {:error, _any} ->
+        throw e
+    end
+  catch
+    {:error, any} ->
+      recv_loop()
+      tcp_data = Packet.encode(%Packet{type: :error, payload: any})
+      transport.send(socket, tcp_data)
+      {:noreply, state}
   end
 
   #############################################################################
@@ -541,7 +566,7 @@ defmodule Erps.Server do
   a `from` term that is either a local `from`, compatible with `t:GenServer.from/0`
   or an opaque term that represents a connected remote client.
   """
-  @opaque from :: GenServer.from | {:remote, :inet.socket, GenServer.from}
+  @opaque from :: GenServer.from | {:remote, :inet.socket, non_neg_integer}
 
   @doc """
   Invoked to set up the process.
