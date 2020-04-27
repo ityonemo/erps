@@ -362,14 +362,12 @@ defmodule Erps.Server do
   naturally takes the `from` value passed in to the second parameter of
   `c:handle_call/3`.
   """
-  @spec reply(via :: GenServer.server, from, term) :: :ok
-  def reply(via \\ self(), from, reply) do
-    send(via, {:"$reply", from, reply})
-    :ok
-  end
+  @spec reply(GenServer.from, term) :: :ok
+  def reply(from, reply), do: GenServer.reply(from, reply)
 
   @spec do_reply(from, term, state) :: :ok
-  defp do_reply({:remote, socket, from}, reply, %{transport: transport}) do
+  defp do_reply({pid, {:"$remote_reply", socket, from}}, reply, %{transport: transport})
+      when pid == self() do
     tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
     transport.send(socket, tcp_data)
   end
@@ -410,8 +408,6 @@ defmodule Erps.Server do
     |> process_noreply(state)
   end
 
-  @closed [:tcp_closed, :ssl_closed]
-
   @impl true
   @spec handle_info(info :: term, state) :: noreply_response
   def handle_info(:accept, state = %{transport: transport}) do
@@ -441,8 +437,8 @@ defmodule Erps.Server do
   def handle_info(:recv, state = %{round_robin: [socket | rest]}) do
     poll_connection(socket, %{state | round_robin: rest})
   end
-  def handle_info({:"$reply", from, reply}, state) do
-    do_reply(from, reply, state)
+  def handle_info({from = {:"$remote_reply", _sock, _id}, reply}, state) do
+    do_reply({self(), from}, reply, state)
     {:noreply, state}
   end
   def handle_info(info_term, state = %{module: module}) do
@@ -490,7 +486,7 @@ defmodule Erps.Server do
 
       {:ok, %Packet{type: :call, payload: {from, data}}} ->
         recv_loop()
-        remote_from = {:remote, socket, from}
+        remote_from = {self(), {:"$remote_reply", socket, from}}
 
         unless filter.(data, :call), do: throw {:error, "filtered"}
 
@@ -576,7 +572,8 @@ defmodule Erps.Server do
   a `from` term that is either a local `from`, compatible with `t:GenServer.from/0`
   or an opaque term that represents a connected remote client.
   """
-  @opaque from :: GenServer.from | {:remote, :inet.socket, non_neg_integer}
+  @opaque from :: GenServer.from |
+    {pid, {:"$remote_reply", Erps.Transport.Api.socket, non_neg_integer}}
 
   @doc """
   Invoked to set up the process.

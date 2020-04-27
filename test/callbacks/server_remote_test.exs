@@ -15,16 +15,10 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
     @impl true
     def init(state), do: {:ok, state}
 
-    def reply(srv, to_whom, what) do
-      GenServer.call(srv, {:reply, to_whom, what})
-    end
+    def reply(to_whom, what), do: GenServer.reply(to_whom, what)
 
     @impl true
     # Utilities
-    def handle_call({:reply, to_whom, what}, _from, test_pid) do
-      Erps.Server.reply(to_whom, what)
-      {:reply, :ok, test_pid}
-    end
     def handle_call(:ping, _, test_pid) do
       send(test_pid, :ping)
       {:reply, :ok, test_pid}
@@ -96,7 +90,7 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
           from
       end
       # force a reply back.
-      Server.reply(server, callback_from, :foo)
+      Server.reply(callback_from, :foo)
       assert :foo == Task.await(async)
       GenServer.call(server, :ping)
       assert :ping == Task.await(ping_task)
@@ -110,15 +104,19 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
           send(server, {:noreply, ping_task.pid, {:continue, :continued}})
           from
       end
+
       # force a reply back.
-      Server.reply(server, callback_from, :foo)
+      Server.reply(callback_from, :foo)
       assert :foo == Task.await(async)
       assert :continued = Task.await(ping_task)
     end
 
     test "a remote client can stop the server with reply", %{client: client, server: server} do
       Process.monitor(server)
-      async = Task.async(fn -> Client.call(client, :foo) end)
+      async = Task.async(fn ->
+        Client.call(client, :foo)
+      end)
+
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, :foo, self()}) end
       assert :foo == Task.await(async)
       assert_receive {:DOWN, _, _, ^server, :normal}
