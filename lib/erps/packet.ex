@@ -25,7 +25,7 @@ defmodule Erps.Packet do
   @magic_cookie <<?e, ?r, ?p, ?s>>
   @identifier_size 36
   @header_bytes 1 + 3 + @identifier_size + 16 + 32
-  @packet_scan_timeout 10  # how frequently we should scan for packets
+  @packet_scan_timeout 100  # how frequently we should scan for packets
   @full_packet_timeout 500  # don't wait forever for the rest of the packet
 
   def get_data(transport, socket, opts) do

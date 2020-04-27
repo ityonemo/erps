@@ -14,7 +14,10 @@ defmodule Erps.Transport.None do
   def listen(_port, _opts), do: {:ok, self()}
   @impl true
   @doc false
-  def accept(sock, _timeout), do: {:ok, sock}
+  def accept(_sock, _timeout) do
+    Process.sleep(100)
+    {:error, :timeout}
+  end
 
   @impl true
   @doc false

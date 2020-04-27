@@ -173,6 +173,13 @@ defmodule Erps.Server do
     GenServer.start(__MODULE__, {module, param, inner_opts}, gen_server_opts)
   end
 
+  # keeps tests snappy but keeps vms from spinlocking.
+  if Mix.env == :test do
+    @timeout_wait 0
+  else
+    @timeout_wait 100
+  end
+
   @doc """
   starts a server GenServer, linked to the caller.
 
@@ -237,7 +244,6 @@ defmodule Erps.Server do
     | {:stop, reason :: any()}
   def init({module, param, opts}) do
     port = opts[:port] || 0
-
     verification_opts = case module.__info__(:attributes)[:verification] do
       [nil] -> []
       [fun] when is_atom(fun) ->
@@ -263,15 +269,16 @@ defmodule Erps.Server do
 
     listen_opts = [:binary, reuseaddr: true, active: false, tls_opts: opts[:tls_opts]]
 
-    case transport.listen(port, listen_opts) do
+    case transport.listen(port, listen_opts)   do
       {:ok, socket} ->
         server_opts = Keyword.merge(opts,
           module: module, port: port, socket: socket,
           decode_opts: decode_opts,
           filter: filter, transport: transport)
 
-        # kick off the accept loop.
+        # kick off the accept and receive loops
         accept_loop()
+        recv_loop()
 
         param
         |> module.init
@@ -411,25 +418,28 @@ defmodule Erps.Server do
   @impl true
   @spec handle_info(info :: term, state) :: noreply_response
   def handle_info(:accept, state = %{transport: transport}) do
-    accept_loop()
     with {:ok, socket} <- transport.accept(state.socket, 100),
          {_, {:ok, upgrade}} <- {socket, transport.handshake(socket, state.tls_opts)} do
       new_connections = Enum.uniq([upgrade | state.connections])
-
-      # immediately kick off the recv loop.
-      recv_loop()
-
+      accept_loop()
       {:noreply, %{state | connections: new_connections}}
     else
+      # timeout in the accept phase
+      {:error, :timeout} ->
+        accept_loop(@timeout_wait)
+        {:noreply, state, :hibernate}
       {socket, {:error, _}} ->
+        accept_loop()
         :gen_tcp.close(socket)
         {:noreply, state}
       _any ->
+        accept_loop()
         {:noreply, state}
     end
   end
   def handle_info(:recv, state = %{round_robin: [], connections: []}) do
-    {:noreply, state}
+    recv_loop(100)
+    {:noreply, state, :hibernate}
   end
   def handle_info(:recv, state = %{round_robin: []}) do
     handle_info(:recv, %{state | round_robin: state.connections})
@@ -467,12 +477,12 @@ defmodule Erps.Server do
   #############################################################################
   ## CONVENIENCE FUNCTIONS
 
-  defp accept_loop do
-    Process.send_after(self(), :accept, 0)
+  defp accept_loop(timeout \\ 0) do
+    Process.send_after(self(), :accept, timeout)
   end
 
-  defp recv_loop do
-    Process.send_after(self(), :recv, 0)
+  defp recv_loop(timeout \\ 0) do
+    Process.send_after(self(), :recv, timeout)
   end
 
   defp poll_connection(socket, state = %{module: module,
@@ -482,36 +492,39 @@ defmodule Erps.Server do
     case Packet.get_data(transport, socket, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
         recv_loop()
+
         {:noreply, state}
 
       {:ok, %Packet{type: :call, payload: {from, data}}} ->
-        recv_loop()
         remote_from = {self(), {:"$remote_reply", socket, from}}
 
         unless filter.(data, :call), do: throw {:error, "filtered"}
+        recv_loop()
 
         data
         |> module.handle_call(remote_from, state.data)
         |> process_call(remote_from, state)
 
       {:ok, %Packet{type: :cast, payload: data}} ->
-        recv_loop()
         unless filter.(data, :cast), do: throw {:error, "filtered"}
+        recv_loop()
 
         data
         |> module.handle_cast(state.data)
         |> process_noreply(state)
+
       {:error, :timeout} ->
-        recv_loop()
-        {:noreply, state}
+        recv_loop(@timeout_wait)
+
+        {:noreply, state, :hibernate}
       {:error, :closed} ->
+        recv_loop()
         {:noreply, %{state | connections: state.connections -- [socket]}}
       e = {:error, _any} ->
         throw e
     end
   catch
     {:error, any} ->
-      recv_loop()
       tcp_data = Packet.encode(%Packet{type: :error, payload: any})
       transport.send(socket, tcp_data)
       {:noreply, state}
