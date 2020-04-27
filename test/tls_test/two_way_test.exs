@@ -125,18 +125,6 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       verify.()
     end
 
-    test "client can't connect with one way tls", %{port: port, verify: verify} do
-      log = capture_log(fn ->
-        assert {:error, _} = Client.start(port: port, transport: Erps.Transport.OneWayTls,
-          tls_opts: [cacertfile: path("rootCA.pem")])
-        Process.sleep(100)
-      end)
-
-      assert log =~ "Handshake Failure"
-      # make sure good client still works
-      verify.()
-    end
-
     test "the client must have tls options activated", %{port: port} do
       assert {:error, _} = Client.start(port: port, transport: Tls)
     end

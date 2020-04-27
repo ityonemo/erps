@@ -140,7 +140,8 @@ defmodule Erps.Server do
   defstruct [:module, :data, :port, :socket, :decode_opts, :filter,
     tls_opts: [],
     transport: @default_transport,
-    connections: []]
+    connections: [],
+    round_robin: []]
 
   @typep filter_fn :: (Packet.type, term -> boolean)
 
@@ -150,7 +151,9 @@ defmodule Erps.Server do
     port:        :inet.port_number,
     socket:      :inet.socket,
     decode_opts: keyword,
-    filter:      filter_fn
+    filter:      filter_fn,
+    connections: [Erps.Transport.Api.socket],
+    round_robin: [Erps.Transport.Api.socket]
   }
 
   @behaviour GenServer
@@ -415,7 +418,6 @@ defmodule Erps.Server do
     accept_loop()
     with {:ok, socket} <- transport.accept(state.socket, 100),
          {_, {:ok, upgrade}} <- {socket, transport.handshake(socket, state.tls_opts)} do
-
       new_connections = Enum.uniq([upgrade | state.connections])
 
       # immediately kick off the recv loop.
@@ -430,13 +432,14 @@ defmodule Erps.Server do
         {:noreply, state}
     end
   end
-  def handle_info(:recv, state) do
-    state.connections
-    |> Enum.each(&poll_connection(&1, state))
+  def handle_info(:recv, state = %{round_robin: [], connections: []}) do
     {:noreply, state}
   end
-  def handle_info({closed, port}, state) when closed in @closed do
-    {:noreply, %{state | connections: Enum.reject(state.connections, &(&1 == port))}}
+  def handle_info(:recv, state = %{round_robin: []}) do
+    handle_info(:recv, %{state | round_robin: state.connections})
+  end
+  def handle_info(:recv, state = %{round_robin: [socket | rest]}) do
+    poll_connection(socket, %{state | round_robin: rest})
   end
   def handle_info({:"$reply", from, reply}, state) do
     do_reply(from, reply, state)
@@ -479,11 +482,14 @@ defmodule Erps.Server do
   defp poll_connection(socket, state = %{module: module,
                                          filter: filter,
                                          transport: transport}) do
+
     case Packet.get_data(transport, socket, state.decode_opts) do
       {:ok, %Packet{type: :keepalive}} ->
+        recv_loop()
         {:noreply, state}
 
       {:ok, %Packet{type: :call, payload: {from, data}}} ->
+        recv_loop()
         remote_from = {:remote, socket, from}
 
         unless filter.(data, :call), do: throw {:error, "filtered"}
@@ -493,13 +499,17 @@ defmodule Erps.Server do
         |> process_call(remote_from, state)
 
       {:ok, %Packet{type: :cast, payload: data}} ->
+        recv_loop()
         unless filter.(data, :cast), do: throw {:error, "filtered"}
 
         data
         |> module.handle_cast(state.data)
         |> process_noreply(state)
       {:error, :timeout} ->
+        recv_loop()
         {:noreply, state}
+      {:error, :closed} ->
+        {:noreply, %{state | connections: state.connections -- [socket]}}
       e = {:error, _any} ->
         throw e
     end

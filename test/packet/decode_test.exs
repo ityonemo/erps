@@ -65,7 +65,6 @@ defmodule ErpsTest.Packet.DecodeTest do
   end
 
   @barfooquux_atom <<131, 100, 0, 10, 98, 97, 114, 102, 111, 111, 113, 117, 117, 120>>
-  @barfooquux_size :erlang.size(@barfooquux_atom)
 
   test "attempting to add an unknown atom fails in safe mode" do
     assert {:error, _} =

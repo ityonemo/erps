@@ -64,7 +64,7 @@ defmodule ErpsTest.OtpTest do
       Process.sleep(20)
       Process.exit(server, :kill)
 
-      assert_receive {:DOWN, _, _, ^client, :tcp_closed}, 500
+      assert_receive {:DOWN, _, _, ^client, :closed}, 500
     end
   end
 
@@ -131,7 +131,7 @@ defmodule ErpsTest.OtpTest do
 
       # check that our server has died.
       assert_receive {:DOWN, _, _, ^server, :killed}, 500
-      assert_receive {:DOWN, _, _, ^client, :tcp_closed}, 200
+      assert_receive {:DOWN, _, _, ^client, :closed}, 200
 
       Process.sleep(200)
 

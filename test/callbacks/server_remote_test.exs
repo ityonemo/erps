@@ -137,7 +137,7 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end
       assert :died == Task.await(async)
       assert_receive {:DOWN, _, _, ^server, :normal}
-      assert_receive {:DOWN, _, _, ^client, :tcp_closed}
+      assert_receive {:DOWN, _, _, ^client, :closed}
     end
   end
 

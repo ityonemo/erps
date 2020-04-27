@@ -144,7 +144,7 @@ defmodule ErpsTest.Callbacks.ClientTest do
       [client_port] = Server.connections(svr)
       Server.disconnect(svr, client_port)
       Process.sleep(20)
-      assert_receive :tcp_closed
+      assert_receive :closed
     end
   end
 

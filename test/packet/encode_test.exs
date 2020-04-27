@@ -8,11 +8,14 @@ defmodule ErpsTest.Packet.EncodeTest do
 
   @moduletag [packet: true, encode: true]
 
+  defp strip_preamble(<<?e, ?r, ?p, ?s, _size :: 32>> <> rest), do: rest
+
   describe "when encoding a packet" do
     test "a very basic call is encoded" do
       assert {:ok, %Packet{type: :call, payload: "foobar"}} =
         %Packet{type: :call, payload: "foobar"}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
 
@@ -20,6 +23,7 @@ defmodule ErpsTest.Packet.EncodeTest do
       assert {:ok, %Packet{type: :cast, payload: "foobar"}} =
         %Packet{type: :cast, payload: "foobar"}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
 
@@ -27,6 +31,7 @@ defmodule ErpsTest.Packet.EncodeTest do
       assert {:ok, %Packet{type: :error, payload: "foobar"}} =
         %Packet{type: :error, payload: "foobar"}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
 
@@ -34,6 +39,7 @@ defmodule ErpsTest.Packet.EncodeTest do
       assert {:ok, %Packet{type: :reply, payload: "foobar"}} =
         %Packet{type: :reply, payload: "foobar"}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
 
@@ -41,6 +47,7 @@ defmodule ErpsTest.Packet.EncodeTest do
       assert {:ok, %Packet{type: :push, payload: "foobar"}} =
         %Packet{type: :push, payload: "foobar"}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
 
@@ -48,6 +55,7 @@ defmodule ErpsTest.Packet.EncodeTest do
       assert {:ok, %Packet{type: :keepalive}} =
         %Packet{type: :keepalive}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
   end
@@ -59,6 +67,7 @@ defmodule ErpsTest.Packet.EncodeTest do
       assert {:ok, %Packet{version: @version}} =
         %Packet{type: :call, version: @version}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
 
@@ -66,6 +75,7 @@ defmodule ErpsTest.Packet.EncodeTest do
       assert {:ok, %Packet{identifier: "identifier"}} =
         %Packet{type: :call, identifier: "identifier"}
         |> Packet.encode
+        |> strip_preamble
         |> Packet.decode
     end
   end
@@ -82,6 +92,7 @@ defmodule ErpsTest.Packet.EncodeTest do
 
       assert {:ok, %Packet{payload: @payload}} = %Packet{type: :call, payload: @payload}
       |> Packet.encode(compressed: true)
+      |> strip_preamble
       |> Packet.decode
     end
 
@@ -93,27 +104,8 @@ defmodule ErpsTest.Packet.EncodeTest do
 
       assert {:ok, %Packet{payload: @payload}} = %Packet{type: :call, payload: @payload}
       |> Packet.encode(compressed: 9)
+      |> strip_preamble
       |> Packet.decode
     end
   end
-
-  @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
-  @hmac_secret :crypto.strong_rand_bytes(32)
-
-  def sign(binary), do: :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
-  def verify(binary, @hmac_key, sig), do: sig == sign(binary)
-
-  describe "when you sign your packet" do
-    test "it can be accepted by the server" do
-      assert {:ok, %Packet{type: :cast, payload: "foobar"}} =
-        %Packet{
-          type: :cast,
-          payload: "foobar",
-          hmac_key: @hmac_key}
-        |> Packet.encode(sign_with: &sign/1)
-        |> IO.iodata_to_binary
-        |> Packet.decode(verification: &verify/3)
-    end
-  end
-
 end

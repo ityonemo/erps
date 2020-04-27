@@ -38,13 +38,20 @@ defmodule ErpsTest.Parameters.ClientTest do
     def init(test_pid), do: {:ok, test_pid}
   end
 
+  defmacrop assert_tcp_packet do
+    quote do
+      assert_receive {:tcp, _, <<?e, ?r, ?p, ?s, _size::32>> <> data}
+      data
+    end
+  end
+
   describe "when the client is versioned" do
     test "the cast packet is branded with its version", %{port: port} do
       {:ok, client} = ClientVersion.start_link(port)
 
       GenServer.cast(client, :foo)
 
-      assert_receive {:tcp, _, data}
+      data = assert_tcp_packet()
       {:ok, packet} = Packet.decode(data)
 
       assert "0.1.3" == "#{packet.version}"
@@ -55,7 +62,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
       spawn_link(fn -> GenServer.call(client, :foo) end)
 
-      assert_receive {:tcp, _, data}
+      data = assert_tcp_packet()
       {:ok, packet} = Packet.decode(data)
 
       assert "0.1.3" == "#{packet.version}"
@@ -82,7 +89,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
       GenServer.cast(client, :foo)
 
-      assert_receive {:tcp, _, data}
+      data = assert_tcp_packet()
       {:ok, packet} = Packet.decode(data)
 
       assert "erpstest" == packet.identifier
@@ -93,7 +100,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
       spawn_link(fn -> GenServer.call(client, :foo) end)
 
-      assert_receive {:tcp, _, data}
+      data = assert_tcp_packet()
       {:ok, packet} = Packet.decode(data)
 
       assert "erpstest" == packet.identifier
@@ -172,128 +179,6 @@ defmodule ErpsTest.Parameters.ClientTest do
     end
   end
 
-  defmodule ClientSignatureLocal do
-    @localhost {127, 0, 0, 1}
-
-    use Erps.Client, sign_with: :signature
-
-    @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
-    @hmac_secret :crypto.strong_rand_bytes(32)
-
-    def start_link(port) do
-      Erps.Client.start_link(__MODULE__, port,
-        server: @localhost,
-        port: port,
-        hmac_key: &hmac_key/0)
-    end
-
-    def init(test_pid), do: {:ok, test_pid}
-
-    def hmac_key, do: @hmac_key
-
-    def signature(binary, @hmac_key) do
-      :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
-    end
-
-    def verification(binary, @hmac_key, signature) do
-      :crypto.mac(:hmac, :sha256, @hmac_secret, binary) == signature
-    end
-  end
-
-  defmodule ClientSignatureLocalHmacRemoteFn do
-    @localhost {127, 0, 0, 1}
-
-    defmodule Remote do
-      @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
-
-      def key, do: @hmac_key
-    end
-
-    use Erps.Client, sign_with: :signature
-
-    @hmac_secret :crypto.strong_rand_bytes(32)
-
-    def start_link(port) do
-      Erps.Client.start_link(__MODULE__, port,
-        server: @localhost,
-        port: port,
-        hmac_key: &Remote.key/0)
-    end
-
-    def init(test_pid), do: {:ok, test_pid}
-
-    def signature(binary, _) do
-      :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
-    end
-
-    def verification(binary, _, signature) do
-      :crypto.mac(:hmac, :sha256, @hmac_secret, binary) == signature
-    end
-  end
-
-  defmodule ClientSignatureRemote do
-    @localhost {127, 0, 0, 1}
-
-    use Erps.Client, sign_with: {__MODULE__.Remote, :signature}
-
-    defmodule Remote do
-      @hmac_secret :crypto.strong_rand_bytes(32)
-
-      def signature(binary, _) do
-        :crypto.mac(:hmac, :sha256, @hmac_secret, binary)
-      end
-    end
-
-    @hmac_key fn -> Enum.random(?A..?Z) end |> Stream.repeatedly |> Enum.take(16) |> List.to_string
-
-    def start_link(port) do
-      Erps.Client.start_link(__MODULE__, port,
-        server: @localhost,
-        port: port,
-        hmac_key: &hmac_key/0)
-    end
-
-    def init(test_pid), do: {:ok, test_pid}
-
-    def hmac_key, do: @hmac_key
-
-    def verification(binary, @hmac_key, signature) do
-      Remote.signature(binary, @hmac_key) == signature
-    end
-  end
-
-  describe "when the client is instrumented with signature" do
-    test "it looks for local @hmac_key", %{port: port} do
-      {:ok, client} = ClientSignatureLocal.start_link(port)
-      GenServer.cast(client, :foo)
-      assert_receive {:tcp, _, signed_data}
-
-      assert {:ok, _packet} =
-        Packet.decode(signed_data,
-          verification: &ClientSignatureLocal.verification/3)
-    end
-
-    test "it looks for remote @hmac_key zero arity fn", %{port: port} do
-      {:ok, client} = ClientSignatureLocalHmacRemoteFn.start_link(port)
-      GenServer.cast(client, :foo)
-      assert_receive {:tcp, _, signed_data}
-
-      assert {:ok, _packet} =
-        Packet.decode(signed_data,
-          verification: &ClientSignatureLocalHmacRemoteFn.verification/3)
-    end
-
-    test "it can also use a remote signature function", %{port: port} do
-      {:ok, client} = ClientSignatureRemote.start_link(port)
-      GenServer.cast(client, :foo)
-      assert_receive {:tcp, _, signed_data}
-
-      assert {:ok, _packet} =
-        Packet.decode(signed_data,
-          verification: &ClientSignatureRemote.verification/3)
-    end
-  end
-
   defmodule ClientKeepalive do
 
     use Erps.Client
@@ -314,7 +199,10 @@ defmodule ErpsTest.Parameters.ClientTest do
     test "the server gets a keepalive", %{port: port} do
       {:ok, _} = ClientKeepalive.start_link(port)
       Process.sleep(200)
-      assert {:ok, %{type: :keepalive}} = Packet.decode(receive do {:tcp, _, data} -> data end)
+      assert {:ok, %{type: :keepalive}} = Packet.decode(
+        receive do
+          {:tcp, _, <<?e, ?r, ?p, ?s, _size::32>> <> data} -> data
+        end)
     end
   end
 end

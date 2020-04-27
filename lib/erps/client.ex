@@ -330,6 +330,8 @@ defmodule Erps.Client do
   """
   def connected?(server), do: GenServer.call(server, :"$connected?")
 
+  def socket(server), do: GenServer.call(server, :"$socket")
+
   #############################################################################
   ## ROUTER
 
@@ -347,6 +349,9 @@ defmodule Erps.Client do
   @spec handle_call(call :: term, GenServer.from, state) :: reply_response
   def handle_call(:"$connected?", _, state) do
     {:reply, not is_nil(state.socket), state}
+  end
+  def handle_call(:"$socket", _, state) do
+    {:reply, state.socket, state}
   end
   def handle_call(_, _, %{socket: nil}) do
     raise "call attempted when the client is not connected"
@@ -399,7 +404,7 @@ defmodule Erps.Client do
   end
 
   # TODO: make this call the transport API
-  @closed [:tcp_closed, :ssl_closed]
+  @closed [:tcp_closed, :ssl_closed, :closed, :enotconn]
 
   @impl true
   @spec handle_info(info :: term, state) :: noreply_response
@@ -408,6 +413,8 @@ defmodule Erps.Client do
     case Packet.get_data(transport, socket, state.decode_opts) do
       {:error, :timeout} ->
         {:noreply, state}
+      {:error, closed} when closed in @closed ->
+        {:stop, closed, state}
       {:error, error} ->
         Logger.error("error decoding response packet: #{inspect error}")
         {:noreply, state}
@@ -421,9 +428,6 @@ defmodule Erps.Client do
         Logger.error("error response from server: #{inspect payload}")
         {:noreply, state}
     end
-  end
-  def handle_info({closed, socket}, state = %{socket: socket}) when closed in @closed do
-    {:stop, closed, state}
   end
   def handle_info(:"$reconnect", state = %{socket: nil, transport: transport}) do
     with {:ok, socket} <- transport.connect(state.server, state.port, [:binary, active: false]),
