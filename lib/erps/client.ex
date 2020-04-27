@@ -410,7 +410,7 @@ defmodule Erps.Client do
   @spec handle_info(info :: term, state) :: noreply_response
   def handle_info(:recv, state = %{transport: transport, socket: socket}) do
     recv_loop()
-    case Packet.get_data(transport, socket, state.decode_opts) do
+    case Packet.get_data(transport, socket, state.decode_opts)  do
       {:error, :timeout} ->
         {:noreply, state}
       {:error, closed} when closed in @closed ->
@@ -431,7 +431,7 @@ defmodule Erps.Client do
   end
   def handle_info(:"$reconnect", state = %{socket: nil, transport: transport}) do
     with {:ok, socket} <- transport.connect(state.server, state.port, [:binary, active: false]),
-         {:ok, upgraded} <- transport.upgrade(socket, [active: true] ++ state.tls_opts) do
+         {:ok, upgraded} <- transport.upgrade(socket, [active: false] ++ state.tls_opts) do
       recv_loop()
       Process.send_after(self(), :"$keepalive", state.keepalive)
       {:noreply, %{state | socket: upgraded}}
@@ -440,7 +440,7 @@ defmodule Erps.Client do
         Process.send_after(self(), :"$reconnect", state.reconnect)
         {:noreply, state}
       {:error, error} ->
-        {:stop, error}
+        {:stop, error, state}
     end
   end
   def handle_info(:"$keepalive", state = %{transport: transport}) do
@@ -448,6 +448,9 @@ defmodule Erps.Client do
     transport.send(state.socket, keepalive_packet)
     Process.send_after(self(), :"$keepalive", state.keepalive)
     {:noreply, do_check_expired_calls(state)}
+  end
+  def handle_info({:ssl_closed, _}, state) do
+    {:stop, :closed, state}
   end
   def handle_info(info, state = %{module: module}) do
     info

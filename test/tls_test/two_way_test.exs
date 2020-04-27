@@ -60,7 +60,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     {:ok, {ip_addr, _}} = :inet.peername(socket)
 
     if dnsname == :inet.ntoa(ip_addr) do
-      {:ok, socket}
+      :ok
     else
       {:error, "validation fail"}
     end
@@ -118,7 +118,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       spawn(fn -> GenServer.call(bad_client, :foo, 100) end)
       server_failure = capture_log(fn -> Process.sleep(100) end)
       # make sure that the bad client has been killed.
-      assert_receive {:DOWN, _, :process, ^bad_client, :tcp_closed}
+      assert_receive {:DOWN, _, :process, ^bad_client, _}
       assert server_failure =~ "Unexpected Message"
       assert server_failure =~ ":server:"
       #make sure good client still works
@@ -203,7 +203,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
       |> case do
         {:ok, bad_client} ->
           Process.monitor(bad_client)
-          assert_receive {:DOWN, _, :process, ^bad_client, :ssl_closed}, 500
+          assert_receive {:DOWN, _, :process, ^bad_client, :closed}, 500
         {:error, _any} ->
           :ok
       end

@@ -104,10 +104,9 @@ defmodule Erps.Transport.Tls do
 
     with {:ok, tls_socket} <- :ssl.handshake(socket, tls_opts!, 200),
          :ok <- :ssl.setopts(tls_socket, after_opts),
-         {:ok, raw_certificate} <- :ssl.peercert(tls_socket) do
-
-      tls_opts![:client_verify_fun].(socket, raw_certificate)
-
+         {:ok, raw_certificate} <- :ssl.peercert(tls_socket),
+         :ok <- tls_opts![:client_verify_fun].(socket, raw_certificate) do
+      {:ok, tls_socket}
     else
       any ->
         :gen_tcp.close(socket)
@@ -119,7 +118,7 @@ defmodule Erps.Transport.Tls do
   @spec transport_type :: :ssl
   def transport_type, do: :ssl
 
-  defp no_verification(socket, _raw_cert) do
-    {:ok, socket}
+  defp no_verification(_socket, _raw_cert) do
+    :ok
   end
 end
