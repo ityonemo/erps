@@ -53,6 +53,10 @@
 - refactor away the `OneWayTls` transport mechanism (for now)
 - make reply() compatible with GenServer.reply()
 
+## 0.4.1
+
+- smarter timeouts prevent systems from DOSing themselves.
+
 ## Planned features:
 
 - Daemon strategy which will allow for failure-isolated inbound
