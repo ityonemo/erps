@@ -57,6 +57,11 @@
 
 - smarter timeouts prevent systems from DOSing themselves.
 
+## 0.4.2
+
+- last version prior to full revision of code.
+- bugfix: makes client init not crash on invalid connection error
+
 ## Planned features:
 
 - Daemon strategy which will allow for failure-isolated inbound

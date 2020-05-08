@@ -267,6 +267,8 @@ defmodule Erps.Client do
         start
         |> module.init()
         |> process_init(state_params ++ [socket: nil])
+      {:error, msg} ->
+        {:stop, msg}
     end
   end
 
