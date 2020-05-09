@@ -56,7 +56,7 @@ defmodule Erps.Server do
     you don't set it or set it to `0` it will pick a random port, which
     is useful for testing purposes.
   - `:transport` - set the transport module, which must implement
-    `Erps.Transport.Api` behaviour.  If you set it to `false`, the
+    `Transport.Api` behaviour.  If you set it to `false`, the
     Erps server will act similarly to a `GenServer` (with some
     overhead).
 
@@ -97,9 +97,9 @@ defmodule Erps.Server do
   # library testing, this defaults to Tcp
 
   if Mix.env in [:dev, :test] do
-    @default_transport Erps.Transport.Tcp
+    @default_transport Transport.Tcp
   else
-    @default_transport Application.get_env(:erps, :transport, Erps.Transport.Tls)
+    @default_transport Application.get_env(:erps, :transport, Transport.Tls)
   end
 
   defmacro __using__(opts) do
@@ -152,8 +152,8 @@ defmodule Erps.Server do
     socket:      :inet.socket,
     decode_opts: keyword,
     filter:      filter_fn,
-    connections: [Erps.Transport.Api.socket],
-    round_robin: [Erps.Transport.Api.socket]
+    connections: [Transport.Api.socket],
+    round_robin: [Transport.Api.socket]
   }
 
   @behaviour GenServer
@@ -189,7 +189,7 @@ defmodule Erps.Server do
     port and `port/1` to retrieve that port number (useful for testing).  You may
     also set it to `false` if you want the server to act as a normal GenServer
     (this is useful if you need a configuration-dependent behaviour)
-  - `:transport` transport module (see `Erps.Transport.Api`)
+  - `:transport` transport module (see `Transport.Api`)
   - `:tls_opts` options for TLS authorization and encryption.  Should include:
     - `:cacertfile` path to the certificate of your signing authority.
     - `:certfile`   path to the server certificate file.
@@ -267,9 +267,9 @@ defmodule Erps.Server do
       specified -> specified
     end
 
-    listen_opts = [:binary, reuseaddr: true, active: false, tls_opts: opts[:tls_opts]]
+    #listen_opts = [tls_opts: opts[:tls_opts]]
 
-    case transport.listen(port, listen_opts)   do
+    case transport.listen(port, []) do
       {:ok, socket} ->
         server_opts = Keyword.merge(opts,
           module: module, port: port, socket: socket,
@@ -586,7 +586,7 @@ defmodule Erps.Server do
   or an opaque term that represents a connected remote client.
   """
   @opaque from :: GenServer.from |
-    {pid, {:"$remote_reply", Erps.Transport.Api.socket, non_neg_integer}}
+    {pid, {:"$remote_reply", Transport.Api.socket, non_neg_integer}}
 
   @doc """
   Invoked to set up the process.

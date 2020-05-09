@@ -76,7 +76,7 @@ defmodule Erps.Client do
         hmac_key: "ABCDEFGHIJKLMNOP",
         server: "my_api-server.example.com",
         port: 4747,
-        transport: Erps.Transport.Tls,
+        transport: Transport.Tls,
         tls_opts: [...])
     end
 
@@ -90,9 +90,9 @@ defmodule Erps.Client do
   @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
 
   if Mix.env in [:dev, :test] do
-    @default_transport Erps.Transport.Tcp
+    @default_transport Transport.Tcp
   else
-    @default_transport Application.get_env(:erps, :transport, Erps.Transport.Tls)
+    @default_transport Application.get_env(:erps, :transport, Transport.Tls)
   end
 
   # by default, attempt a reconnect every minute.
@@ -140,8 +140,7 @@ defmodule Erps.Client do
   @default_keepalive 60_000
 
   defstruct [:module, :socket, :server, :port, :data, :base_packet,
-    :encode_opts, :hmac_key, :signature, :reconnect, :transport_type,
-    tls_opts: [],
+    :encode_opts, :hmac_key, :signature, :reconnect, tls_opts: [],
     decode_opts: [safe: true],
     keepalive: @default_keepalive,
     transport: @default_transport,
@@ -166,7 +165,6 @@ defmodule Erps.Client do
     hmac_key:       nil | hmac_function,
     signature:      nil | signing_function,
     reconnect:      non_neg_integer,
-    transport_type: :tcp | :ssl,
     tls_opts:       keyword,
     decode_opts:    keyword,
     keepalive:      timeout,
@@ -208,8 +206,8 @@ defmodule Erps.Client do
       and pulled from `System.get_env/1` or `Application.get_env/2`)
   - `:tls_opts`     options for setting up a TLS connection.
     - `:cacertfile` path to the certificate of your signing authority. (required)
-    - `:certfile`   path to the server certificate file. (required for `Erps.Transport.Tls`)
-    - `:keyfile`    path to the signing key. (required for `Erps.Transport.Tls`)
+    - `:certfile`   path to the server certificate file. (required for `Transport.Tls`)
+    - `:keyfile`    path to the signing key. (required for `Transport.Tls`)
     - `:customize_hostname_check` it's very likely that you might get tls failures if
                     you are relying on the OTP builtin hostname checks.  This otp feature
                     lets you override it for something custom.
@@ -253,7 +251,7 @@ defmodule Erps.Client do
 
     # note: you have to always connect to an ssl connections using active: false, otherwise
     # TLS synchronization handshake will fail.
-    with {:ok, socket} <- transport.connect(server, port, [:binary, active: false]),
+    with {:ok, socket} <- transport.connect(server, port),
          {:ok, upgraded} <- transport.upgrade(socket, [active: false] ++ state_params[:tls_opts]) do
       Process.send_after(self(), :"$keepalive", state_params[:keepalive])
       recv_loop()
@@ -285,8 +283,7 @@ defmodule Erps.Client do
     transport = opts[:transport] || @default_transport
 
     adjusted_options = hmac_key_option ++ basic_options ++
-    [transport: transport,
-     transport_type: transport.transport_type()]
+    [transport: transport]
 
     Keyword.merge(opts, adjusted_options)
   end

@@ -2,7 +2,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
-  alias Erps.Transport.Tls
+  alias Transport.Tls
 
   @moduletag :tls
 
@@ -112,7 +112,7 @@ defmodule ErpsTest.TlsTest.TwoWayTest do
     end
 
     test "client can't connect over unencrypted channel", %{port: port, verify: verify} do
-      {:ok, bad_client} = Client.start(port: port, transport: Erps.Transport.Tcp)
+      {:ok, bad_client} = Client.start(port: port, transport: Transport.Tcp)
       Process.monitor(bad_client)
       assert Process.alive?(bad_client)
       spawn(fn -> GenServer.call(bad_client, :foo, 100) end)

@@ -21,9 +21,9 @@ defmodule ErpsTest.ClientCase do
   end
 
   setup context do
-    server_module = Module.concat(context.module, "Server")
-    {:ok, srv} = server_module.start_link(:ok)
-    {:ok, server: srv}
+    server_module = Module.concat(context.module, "Server") 
+    {:ok, srv} = server_module.start_link(:ok) 
+    {:ok, server: srv} 
   end
 
 end

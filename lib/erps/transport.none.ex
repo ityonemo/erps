@@ -5,13 +5,12 @@ defmodule Erps.Transport.None do
   a basic GenServer
   """
 
-  @behaviour Erps.Transport.Api
-
-  @type socket :: Erps.Transport.Api.socket
+  @behaviour Transport
 
   @impl true
   @doc false
-  def listen(_port, _opts), do: {:ok, self()}
+  def listen(_port, _opts \\ []), do: {:ok, self()}
+  
   @impl true
   @doc false
   def accept(_sock, _timeout) do
@@ -27,7 +26,7 @@ defmodule Erps.Transport.None do
   def recv(_sock, _length), do: {:ok, ""}
 
   @impl true
-  @doc "Callback implementation for `c:Erps.Transport.Api.recv/3`, via `:ssl.recv/3`."
+  @doc "Callback implementation for `c:Transport.recv/3`, via `:ssl.recv/3`."
   def recv(_sock, _length, _timeout), do: {:ok, ""}
 
   @impl true
@@ -43,6 +42,6 @@ defmodule Erps.Transport.None do
   def handshake(socket, _opts), do: {:ok, socket}
 
   @impl true
-  @spec transport_type :: :none
-  def transport_type, do: :none
+  @spec type :: :none
+  def type, do: :none
 end

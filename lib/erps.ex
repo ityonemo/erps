@@ -23,7 +23,7 @@ defmodule Erps do
   connection are trusted, and provides only basic security measures to
   protect the server and the client.
 
-  In particular, one of the strategies, `Erps.Transport.OneWayTls`, is still
+  In particular, one of the strategies, `Transport.OneWayTls`, is still
   in-progress but should be considered experimental and insecure.  Updates
   to improve the security model of this stratgy are welcome.
 
