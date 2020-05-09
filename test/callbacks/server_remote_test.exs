@@ -5,6 +5,8 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
   # tests on Erps.Server to make sure that it correctly responds
   # to remote calls.
 
+  alias Erps.Daemon
+
   @moduletag :server
 
   defmodule Server do
@@ -13,7 +15,10 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
     def start(test_pid), do: Erps.Server.start(__MODULE__, test_pid)
 
     @impl true
-    def init(state), do: {:ok, state}
+    def init(test_pid) do
+      send(test_pid, {:server, self()})
+      {:ok, test_pid}
+    end
 
     def reply(to_whom, what), do: GenServer.reply(to_whom, what)
 
@@ -51,9 +56,11 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
   end
 
   setup do
-    {:ok, server} = Server.start(self())
-    {:ok, port} = Server.port(server)
+    {:ok, daemon} = Daemon.start(Server, self())
+    {:ok, port} = Daemon.port(daemon)
     {:ok, client} = Client.start(self(), port)
+
+    server = receive do {:server, server} -> server end
 
     on_exit(fn ->
       if Process.alive?(server), do: Process.exit(server, :kill)
@@ -135,7 +142,7 @@ defmodule ErpsTest.Callbacks.ServerRemoteTest do
       receive do {:called, _, :foo} -> send(server, {:stop, :normal, self()}) end
       assert :died == Task.await(async)
       assert_receive {:DOWN, _, _, ^server, :normal}
-      assert_receive {:DOWN, _, _, ^client, :closed}
+      assert_receive {:DOWN, _, _, ^client, :disconnected}
     end
   end
 

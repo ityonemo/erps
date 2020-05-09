@@ -14,16 +14,29 @@ defmodule ErpsTest.ClientCase do
       defmodule Server do
         use Erps.Server
 
-        def start_link(state), do: Erps.Server.start_link(__MODULE__, state, [])
-        def init(state), do: {:ok, state}
+        def start_link(test_pid) do
+          Erps.Server.start_link(__MODULE__, test_pid, [])
+        end
+
+        def init(test_pid) do
+          send(test_pid, {:server, self()})
+          {:ok, test_pid}
+        end
+      end
+
+      defp server do
+        receive do {:server, server_pid} -> server_pid end
       end
     end
   end
 
+  alias Erps.Daemon
+
   setup context do
-    server_module = Module.concat(context.module, "Server") 
-    {:ok, srv} = server_module.start_link(:ok) 
-    {:ok, server: srv} 
+    server_module = Module.concat(context.module, "Server")
+    {:ok, daemon} = Daemon.start_link(server_module, self())
+    {:ok, port} = Daemon.port(daemon)
+    {:ok, port: port}
   end
 
 end

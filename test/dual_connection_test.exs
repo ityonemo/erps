@@ -2,7 +2,9 @@ defmodule ErpsTest.DualConnectionTest do
 
   use ExUnit.Case, async: true
 
-  defmodule TestClient do
+  alias Erps.Daemon
+
+  defmodule Client do
     use Erps.Client
 
     @localhost {127, 0, 0, 1}
@@ -16,7 +18,7 @@ defmodule ErpsTest.DualConnectionTest do
     def ping(srv), do: GenServer.call(srv, :ping)
   end
 
-  defmodule TestServer do
+  defmodule Server do
     use Erps.Server
 
     def start_link(state) do
@@ -31,11 +33,13 @@ defmodule ErpsTest.DualConnectionTest do
   end
 
   test "you can have two clients connected to the same server" do
-    {:ok, server} = TestServer.start_link(:waiting)
-    {:ok, port} = Erps.Server.port(server)
-    {:ok, client1} = TestClient.start_link(port)
-    {:ok, client2} = TestClient.start_link(port)
-    assert :pong == TestClient.ping(client1)
-    assert :pong == TestClient.ping(client2)
+    {:ok, daemon} = Daemon.start_link(Server, self())
+    {:ok, port} = Daemon.port(daemon)
+
+    {:ok, client1} = Client.start_link(port)
+    {:ok, client2} = Client.start_link(port)
+
+    assert :pong == Client.ping(client1)
+    assert :pong == Client.ping(client2)
   end
 end

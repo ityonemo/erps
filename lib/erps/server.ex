@@ -91,23 +91,12 @@ defmodule Erps.Server do
 
   """
 
-  # defaults the transport to TLS for library users.  This can be
-  # overridden by a (gasp!) environment variable, but mostly you should
-  # do this on a case-by-case basis on `start_link`.  For internal
-  # library testing, this defaults to Tcp
-
-  if Mix.env in [:dev, :test] do
-    @default_transport Transport.Tcp
-  else
-    @default_transport Application.get_env(:erps, :transport, Transport.Tls)
-  end
+  #############################################################################
+  ## module using statement
 
   defmacro __using__(opts) do
-    safe = if opts[:safe] == false, do: false, else: true
-
     decode_opts = opts
-    |> Keyword.take([:identifier, :versions])
-    |> Keyword.put(:safe, safe)
+    |> Keyword.take([:identifier, :versions, :safe, :timeout])
 
     verification = opts[:verification]
 
@@ -125,35 +114,30 @@ defmodule Erps.Server do
       @behaviour Erps.Server
 
       # define a set of "magic functions".
-      defdelegate port(srv), to: Erps.Server
       defdelegate push(srv, push), to: Erps.Server
-      defdelegate connections(srv), to: Erps.Server
-      defdelegate disconnect(srv, port), to: Erps.Server
+      defdelegate disconnect(srv), to: Erps.Server
 
       @decode_opts unquote(decode_opts)
       @verification unquote(verification)
     end
   end
 
+  #############################################################################
+
   alias Erps.Packet
 
-  defstruct [:module, :data, :port, :socket, :decode_opts, :filter,
-    tls_opts: [],
-    transport: @default_transport,
-    connections: [],
-    round_robin: []]
+  @enforce_keys [:module, :data, :socket, :transport]
 
-  @typep filter_fn :: (Packet.type, term -> boolean)
+  defstruct @enforce_keys ++ [:tcp_socket, decode_opts: [], tls_opts: []]
 
   @typep state :: %__MODULE__{
     module:      module,
     data:        term,
-    port:        :inet.port_number,
-    socket:      :inet.socket,
+    socket:      Transport.socket,
+    tcp_socket:  :inet.socket,  #keeps the legacy socket around after upgrade.
+    transport:   module,
     decode_opts: keyword,
-    filter:      filter_fn,
-    connections: [Transport.Api.socket],
-    round_robin: [Transport.Api.socket]
+    tls_opts:    keyword
   }
 
   @behaviour GenServer
@@ -171,13 +155,6 @@ defmodule Erps.Server do
   def start(module, param, opts \\ []) do
     {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
     GenServer.start(__MODULE__, {module, param, inner_opts}, gen_server_opts)
-  end
-
-  # keeps tests snappy but keeps vms from spinlocking.
-  if Mix.env == :test do
-    @timeout_wait 0
-  else
-    @timeout_wait 100
   end
 
   @doc """
@@ -230,112 +207,78 @@ defmodule Erps.Server do
   see `GenServer.start_link/3` for a description of further options.
   """
   @spec start_link(module, term, keyword) :: GenServer.on_start
-  def start_link(module, param, opts \\ []) do
-    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    GenServer.start_link(__MODULE__, {module, param, inner_opts}, gen_server_opts)
+  def start_link(module, param, options! \\ []) do
+    options! = put_in(options!, [:spawn_opt], [:link | (options![:spawn_opt] || [])])
+    start(module, param, options!)
   end
 
   @impl true
   @doc false
-  @spec init({module, term, keyword}) ::
-    {:ok, state}
-    | {:ok, state, timeout() | :hibernate | {:continue, term()}}
-    | :ignore
-    | {:stop, reason :: any()}
-  def init({module, param, opts}) do
-    port = opts[:port] || 0
-    verification_opts = case module.__info__(:attributes)[:verification] do
-      [nil] -> []
-      [fun] when is_atom(fun) ->
-        [verification: &apply(module, fun, [&1, &2, &3])]
-      [{mod, fun}] ->
-        [verification: &apply(mod, fun, [&1, &2, &3])]
-    end
-
-    decode_opts = module.__info__(:attributes)[:decode_opts]
-    ++ verification_opts
-
-    filter = if function_exported?(module, :filter, 2) do
-      &module.filter/2
-    else
-      &default_filter/2
-    end
-
-    transport = case opts[:transport] do
-      nil -> @default_transport
-      false -> Erps.Transport.None
-      specified -> specified
-    end
-
-    #listen_opts = [tls_opts: opts[:tls_opts]]
-
-    case transport.listen(port, []) do
-      {:ok, socket} ->
-        server_opts = Keyword.merge(opts,
-          module: module, port: port, socket: socket,
-          decode_opts: decode_opts,
-          filter: filter, transport: transport)
-
-        # kick off the accept and receive loops
-        accept_loop()
-        recv_loop()
-
-        param
-        |> module.init
-        |> process_init(server_opts)
-      {:error, what} ->
-        {:stop, what}
-    end
+  def init({module, param, options}) do
+    param
+    |> module.init
+    |> process_init([module: module] ++
+      options ++ module.__info__(:attributes))
   end
 
-  #############################################################################
-  ## API
+  ##############################################################################
+  ### API
 
   # convenience type that lets us annotate internal call reply types sane.
   @typep reply(type) :: {:reply, type, state}
 
   @type server :: GenServer.server
 
-  @doc """
-  queries the server to retrieve the TCP port that it's bound to to receive
-  protocol messages.
+  @doc false
+  # PRIVATE API.  Informs the server that ownership of the socket has been
+  # passed to it.
+  @spec allow(server) :: :ok
+  def allow(server), do: GenServer.call(server, :"$allow")
 
-  Useful if you have initiated your server with `port: 0`, especially in tests.
-  """
-  @spec port(server) :: {:ok, :inet.port_number} | {:error, any}
-  def port(srv), do: GenServer.call(srv, :"$port")
-  @spec port_impl(state) :: reply({:ok, :inet.port_number} | {:error, any})
-  defp port_impl(state) do
-    {:reply, :inet.port(state.socket), state}
+  @spec allow_impl(GenServer.from, state) :: {:reply, :ok, state}
+  defp allow_impl(_from, state = %{socket: socket, transport: transport}) do
+    # perform ssl handshake, upgrade to TLS.
+    # next, wait for the subscription signal and set up the phoenix
+    # pubsub subscriptions.
+    case transport.handshake(socket, state.tls_opts) do
+      {:ok, upgraded_socket} ->
+        recv_loop()
+        {:reply, :ok,
+          %{state | socket: upgraded_socket, tcp_socket: socket}}
+      error = {:error, msg} -> {:stop, msg, error, state}
+      error -> {:stop, :error, error, state}
+    end
   end
 
-  @doc """
-  queries the server to retrieve a list of all clients that are connected
-  to the server.
-  """
-  @spec connections(server) :: [Erps.socket]
-  def connections(srv), do: GenServer.call(srv, :"$connections")
-  @spec connections_impl(state) :: reply([Erps.socket])
-  defp connections_impl(state) do
-    {:reply, state.connections, state}
-  end
-
-  @doc """
-  instruct the server to drop one of its connections.
-
-  returns `{:error, :enoent}` if the connection is not in its list of active
-  connections.
-  """
-  @spec disconnect(server, Erps.socket) :: :ok | {:error, :enoent}
-  def disconnect(srv, socket), do: GenServer.call(srv, {:"$disconnect", socket})
-  @spec disconnect_impl(Erps.socket, state) :: reply(:ok | {:error, :enoent})
-  defp disconnect_impl(socket, state = %{connections: connections}) do
-    if socket in connections do
-      :gen_tcp.close(socket)
-      new_connections = Enum.reject(connections, &(&1 == socket))
-      {:reply, :ok, %{state | connections: new_connections}}
-    else
-      {:reply, {:error, :enoent}, state}
+  # performs the socket receive loop.
+  defp recv_impl(state = %{socket: socket, module: module}) do
+    case Packet.get_data(state.transport, socket, state.decode_opts) do
+      {:ok, %Packet{type: :keepalive}} ->
+        recv_loop()
+        {:noreply, state}
+      {:ok, %Packet{type: :call, payload: {from, data}}} ->
+        remote_from = {self(), {:"$remote_reply", socket, from}}
+        recv_loop()
+        data
+        |> module.handle_call(remote_from, state.data)
+        |> process_call(remote_from, state)
+      {:ok, %Packet{type: :cast, payload: data}} ->
+        recv_loop()
+        data
+        |> module.handle_cast(state.data)
+        |> process_noreply(state)
+      {:error, :timeout} ->
+        recv_loop()
+        {:noreply, state}
+      {:error, error} when is_binary(error) ->
+        tcp_data = Packet.encode(%Packet{
+          type: :error,
+          payload: error
+        })
+        state.transport.send(socket, tcp_data)
+        {:noreply, state}
+      {:error, error} ->
+        {:stop, error, state}
     end
   end
 
@@ -345,14 +288,26 @@ defmodule Erps.Server do
   """
   @spec push(server, push::term) :: :ok
   def push(srv, push), do: GenServer.call(srv, {:"$push", push})
+
   @spec push_impl(push :: term, state) :: reply(:ok)
   defp push_impl(push, state = %{transport: transport}) do
     tcp_data = Packet.encode(%Packet{
       type: :push,
       payload: push
     })
-    Enum.each(state.connections, &transport.send(&1, tcp_data))
+    transport.send(state.socket, tcp_data)
     {:reply, :ok, state}
+  end
+
+  @doc """
+  disconnects the server, causing it to close.
+  """
+  @spec disconnect(server) :: :ok
+  def disconnect(server), do: GenServer.cast(server, :"$disconnect")
+
+  defp disconnect_impl(state) do
+    :gen_tcp.close(state.tcp_socket)
+    {:stop, :normal, state}
   end
 
   #############################################################################
@@ -378,26 +333,27 @@ defmodule Erps.Server do
     tcp_data = Packet.encode(%Packet{type: :reply, payload: {reply, from}})
     transport.send(socket, tcp_data)
   end
-  defp do_reply(local_client, reply, _state), do: GenServer.reply(local_client, reply)
+  defp do_reply(local_client, reply, _state) do
+    GenServer.reply(local_client, reply)
+  end
 
   #############################################################################
-  # router
+  ## router
 
+  # typespec boilerplate #
   @typep noreply_response ::
   {:noreply, state}
   | {:noreply, state, timeout | :hibernate | {:continue, term}}
   | {:stop, reason :: term, state}
-
   @typep reply_response ::
   {:reply, reply :: term, state}
   | {:reply, reply :: term, state, timeout | :hibernate | {:continue, term}}
   | noreply_response
+  # typespec boilerplate #
 
   @impl true
   @spec handle_call(call :: term, from, state) :: reply_response
-  def handle_call(:"$port", _from, state), do: port_impl(state)
-  def handle_call(:"$connections", _from, state), do: connections_impl(state)
-  def handle_call({:"$disconnect", port}, _from, state), do: disconnect_impl(port, state)
+  def handle_call(:"$allow", from, state), do: allow_impl(from, state)
   def handle_call({:"$push", push}, _from, state) do
     push_impl(push, state)
   end
@@ -409,6 +365,9 @@ defmodule Erps.Server do
 
   @impl true
   @spec handle_cast(cast :: term, state) :: noreply_response
+  def handle_cast(:"$disconnect", state) do
+    disconnect_impl(state)
+  end
   def handle_cast(cast, state = %{module: module}) do
     cast
     |> module.handle_cast(state.data)
@@ -416,36 +375,8 @@ defmodule Erps.Server do
   end
 
   @impl true
-  @spec handle_info(info :: term, state) :: noreply_response
-  def handle_info(:accept, state = %{transport: transport}) do
-    with {:ok, socket} <- transport.accept(state.socket, 100),
-         {_, {:ok, upgrade}} <- {socket, transport.handshake(socket, state.tls_opts)} do
-      new_connections = Enum.uniq([upgrade | state.connections])
-      accept_loop()
-      {:noreply, %{state | connections: new_connections}}
-    else
-      # timeout in the accept phase
-      {:error, :timeout} ->
-        accept_loop(@timeout_wait)
-        {:noreply, state, :hibernate}
-      {socket, {:error, _}} ->
-        accept_loop()
-        :gen_tcp.close(socket)
-        {:noreply, state}
-      _any ->
-        accept_loop()
-        {:noreply, state}
-    end
-  end
-  def handle_info(:recv, state = %{round_robin: [], connections: []}) do
-    recv_loop(100)
-    {:noreply, state, :hibernate}
-  end
-  def handle_info(:recv, state = %{round_robin: []}) do
-    handle_info(:recv, %{state | round_robin: state.connections})
-  end
-  def handle_info(:recv, state = %{round_robin: [socket | rest]}) do
-    poll_connection(socket, %{state | round_robin: rest})
+  def handle_info(:"$recv", state) do
+    recv_impl(state)
   end
   def handle_info({from = {:"$remote_reply", _sock, _id}, reply}, state) do
     do_reply({self(), from}, reply, state)
@@ -474,61 +405,6 @@ defmodule Erps.Server do
     end
   end
 
-  #############################################################################
-  ## CONVENIENCE FUNCTIONS
-
-  defp accept_loop(timeout \\ 0) do
-    Process.send_after(self(), :accept, timeout)
-  end
-
-  defp recv_loop(timeout \\ 0) do
-    Process.send_after(self(), :recv, timeout)
-  end
-
-  defp poll_connection(socket, state = %{module: module,
-                                         filter: filter,
-                                         transport: transport}) do
-
-    case Packet.get_data(transport, socket, state.decode_opts) do
-      {:ok, %Packet{type: :keepalive}} ->
-        recv_loop()
-
-        {:noreply, state}
-
-      {:ok, %Packet{type: :call, payload: {from, data}}} ->
-        remote_from = {self(), {:"$remote_reply", socket, from}}
-
-        unless filter.(data, :call), do: throw {:error, "filtered"}
-        recv_loop()
-
-        data
-        |> module.handle_call(remote_from, state.data)
-        |> process_call(remote_from, state)
-
-      {:ok, %Packet{type: :cast, payload: data}} ->
-        unless filter.(data, :cast), do: throw {:error, "filtered"}
-        recv_loop()
-
-        data
-        |> module.handle_cast(state.data)
-        |> process_noreply(state)
-
-      {:error, :timeout} ->
-        recv_loop(@timeout_wait)
-
-        {:noreply, state, :hibernate}
-      {:error, :closed} ->
-        recv_loop()
-        {:noreply, %{state | connections: state.connections -- [socket]}}
-      e = {:error, _any} ->
-        throw e
-    end
-  catch
-    {:error, any} ->
-      tcp_data = Packet.encode(%Packet{type: :error, payload: any})
-      transport.send(socket, tcp_data)
-      {:noreply, state}
-  end
 
   #############################################################################
   ## ADAPTERS
@@ -576,7 +452,9 @@ defmodule Erps.Server do
     end
   end
 
-  defp default_filter(_, _), do: true
+  defp recv_loop do
+    Process.send_after(self(), :"$recv", 0)
+  end
 
   #############################################################################
   ## BEHAVIOUR CALLBACKS

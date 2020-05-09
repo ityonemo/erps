@@ -7,15 +7,14 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
 
     @localhost {127, 0, 0, 1}
 
-    def start_link(svr, test_pid) do
-      {:ok, port} = Server.port(svr)
+    def start_link(port, async_pid) do
       Erps.Client.start_link(__MODULE__,
-        test_pid, server: @localhost, port: port)
+        async_pid, server: @localhost, port: port)
     end
 
     @impl true
-    def init(test_pid) do
-      send(test_pid, {:init, self()})
+    def init(async_pid) do
+      send(async_pid, {:init, self()})
       receive do any -> any end
     end
 
@@ -32,45 +31,45 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
     end
   end
 
+  defp springload_init(init_result) do
+    Task.async(fn ->
+      receive do
+        {:init, client_pid} ->
+          send(client_pid, init_result)
+      end
+    end)
+  end
+
+
   describe "the init/1 function" do
-    test "can return {:ok, state}", %{server: server} do
-      test_pid = self()
-      async = Task.async(fn ->
-        receive do {:init, client_pid} -> send(client_pid, {:ok, test_pid}) end
-      end)
-      Client.start_link(server, async.pid)
+    test "can return {:ok, state}", %{port: port} do
+      # set up an async which springloads an initialization response
+      async = springload_init({:ok, self()})
+      Client.start_link(port, async.pid)
 
       Process.sleep(50)
 
-      Server.push(server, :ping)
+      # verify that all is well.
+      Erps.Server.push(server(), :ping)
       assert_receive :ping
     end
 
-    test "can send into a continuation", %{server: server} do
-      test_pid = self()
-      async = Task.async(fn ->
-        receive do
-          {:init, client_pid} -> send(client_pid, {:ok, test_pid, {:continue, :continued}})
-        end
-      end)
+    test "can send into a continuation", %{port: port} do
+      async = springload_init({:ok, self(), {:continue, :continued}})
+      Client.start_link(port, async.pid)
 
-      Client.start_link(server, async.pid)
-
+      # verify that we transition to continued
       assert_receive :continued
     end
 
-    test "can just ignore", %{server: server} do
-      async = Task.async(fn ->
-        receive do {:init, client_pid} -> send(client_pid, :ignore) end
-      end)
-      assert :ignore = Client.start_link(server, async.pid)
+    test "can just ignore", %{port: port} do
+      async = springload_init(:ignore)
+      assert :ignore = Client.start_link(port, async.pid)
     end
 
-    test "can stop", %{server: server} do
-      async = Task.async(fn ->
-        receive do {:init, client_pid} -> send(client_pid, {:stop, :abnormal}) end
-      end)
-      assert {:error, :abnormal} = Client.start_link(server, async.pid)
+    test "can stop", %{port: port} do
+      async = springload_init({:stop, :abnormal})
+      assert {:error, :abnormal} = Client.start_link(port, async.pid)
     end
   end
 

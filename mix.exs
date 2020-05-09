@@ -29,6 +29,8 @@ defmodule Erps.MixProject do
     {:ex_doc, "~> 0.20.2", only: :dev, runtime: false},
     {:excoveralls, "~> 0.11.1", only: :test},
 
+    # abstracts services which are connections
+    {:connection, "~> 1.0"},
     # abstracts TLS and TCP into a single interface
     {:transport, "~> 0.1.0"},
 

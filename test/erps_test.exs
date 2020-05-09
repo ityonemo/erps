@@ -1,6 +1,10 @@
 defmodule ErpsTest do
   use ExUnit.Case, async: true
 
+  @moduletag :erps
+
+  alias Erps.Daemon
+
   defmodule Client do
     use Erps.Client
 
@@ -25,7 +29,10 @@ defmodule ErpsTest do
       Erps.Server.start_link(__MODULE__, state, [])
     end
 
-    def init(state), do: {:ok, state}
+    def init(test_pid) do
+      send(test_pid, {:server, self()})
+      {:ok, :waiting}
+    end
 
     def state(srv), do: GenServer.call(srv, :state)
 
@@ -43,16 +50,20 @@ defmodule ErpsTest do
 
   describe "An Erps server" do
     test "can accept a call" do
-      {:ok, server} = Server.start_link(:waiting)
-      {:ok, port} = Erps.Server.port(server)
+      {:ok, daemon} = Daemon.start_link(Server, self())
+      {:ok, port} = Daemon.port(daemon)
       {:ok, client} = Client.start_link(port)
       assert :pong == Client.ping(client)
     end
 
     test "can accept a mutating cast" do
-      {:ok, server} = Server.start_link(:waiting)
-      {:ok, port} = Erps.Server.port(server)
+      {:ok, server} = Daemon.start_link(Server, self())
+      {:ok, port} = Daemon.port(server)
       {:ok, client} = Client.start_link(port)
+
+      assert_receive {:server, server}
+
+      assert :waiting = Server.state(server)
       Client.cast(client)
       Process.sleep(20)
       assert :casted = Server.state(server)
@@ -63,10 +74,9 @@ defmodule ErpsTest do
 
     use Erps.Client
 
-    def start_link(svr, name) do
-      {:ok, port} = Erps.Server.port(svr)
-      Erps.Client.start_link(__MODULE__,
-        :ok, server: name, port: port)
+    def start_link(daemon, name) do
+      {:ok, port} = Daemon.port(daemon)
+      Erps.Client.start_link(__MODULE__, :ok, server: name, port: port)
     end
 
     @impl true
@@ -75,8 +85,8 @@ defmodule ErpsTest do
 
   describe "a client can be initialized" do
     test "with a string DNS name" do
-      {:ok, server} = Server.start_link(:waiting)
-      {:ok, client} = ClientVariableServer.start_link(server, "localhost")
+      {:ok, daemon} = Daemon.start_link(Server, self())
+      {:ok, client} = ClientVariableServer.start_link(daemon, "localhost")
       Process.sleep(20)
       assert :pong = GenServer.call(client, :ping)
     end

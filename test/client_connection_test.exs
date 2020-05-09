@@ -49,6 +49,8 @@ defmodule ErpsTest.ClientConnectionTest do
     end
   end
 
+  alias Erps.Daemon
+
   defmodule Server do
     use Erps.Server
 
@@ -62,6 +64,7 @@ defmodule ErpsTest.ClientConnectionTest do
     def handle_call(any, _from, state), do: {:reply, any, state}
   end
 
+  @tag :one
   test "clients can reconnect to servers" do
     port = Enum.random(10_000..30_000)
     {:ok, client} = Client.start_link(port)
@@ -69,7 +72,7 @@ defmodule ErpsTest.ClientConnectionTest do
     # give it 750 milliseconds
     Process.sleep(750)
 
-    Server.start_link(port)
+    Daemon.start_link(Server, port)
 
     # give the client plenty of time to reconnect
     Process.sleep(150)

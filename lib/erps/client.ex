@@ -413,7 +413,7 @@ defmodule Erps.Client do
       {:error, :timeout} ->
         {:noreply, state}
       {:error, closed} when closed in @closed ->
-        {:stop, closed, state}
+        {:stop, :disconnected, state}
       {:error, error} ->
         Logger.error("error decoding response packet: #{inspect error}")
         {:noreply, state}
@@ -429,7 +429,7 @@ defmodule Erps.Client do
     end
   end
   def handle_info(:"$reconnect", state = %{socket: nil, transport: transport}) do
-    with {:ok, socket} <- transport.connect(state.server, state.port, [:binary, active: false]),
+    with {:ok, socket} <- transport.connect(state.server, state.port),
          {:ok, upgraded} <- transport.upgrade(socket, [active: false] ++ state.tls_opts) do
       recv_loop()
       Process.send_after(self(), :"$keepalive", state.keepalive)
@@ -448,8 +448,8 @@ defmodule Erps.Client do
     Process.send_after(self(), :"$keepalive", state.keepalive)
     {:noreply, do_check_expired_calls(state)}
   end
-  def handle_info({:ssl_closed, _}, state) do
-    {:stop, :closed, state}
+  def handle_info({closed, _}, state) when closed in @closed do
+    {:stop, :disconnected, state}
   end
   def handle_info(info, state = %{module: module}) do
     info
@@ -479,9 +479,9 @@ defmodule Erps.Client do
   @impl true
   @spec terminate(reason, state) :: term
     when reason: :normal | :shutdown | {:shutdown, term}
-  def terminate(reason, state = %{module: module}) do
+  def terminate(reason!, state = %{module: module}) do
     if function_exported?(module, :terminate, 2) do
-      module.terminate(reason, state.data)
+      module.terminate(reason!, state.data)
     end
   end
 

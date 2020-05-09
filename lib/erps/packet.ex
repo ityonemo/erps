@@ -9,7 +9,6 @@ defmodule Erps.Packet do
     signature:    <<0::32 * 8>>,
     payload_size: 0,
     payload:      nil,
-    complete?:    false,
   ]
 
   # this is the construction of the erps packet, which looks as follows:
@@ -25,8 +24,13 @@ defmodule Erps.Packet do
   @magic_cookie <<?e, ?r, ?p, ?s>>
   @identifier_size 36
   @header_bytes 1 + 3 + @identifier_size + 16 + 32
-  @packet_scan_timeout 100  # how frequently we should scan for packets
   @full_packet_timeout 500  # don't wait forever for the rest of the packet
+  if Mix.env == :test do
+    # keeps tests snappy but keeps prod vms from spinning too hard.
+    @packet_scan_timeout 0
+  else
+    @packet_scan_timeout 100
+  end
 
   def get_data(transport, socket, opts) do
     timeout = opts[:timeout] || @packet_scan_timeout
@@ -75,7 +79,6 @@ defmodule Erps.Packet do
     signature:    binary,
     payload_size: non_neg_integer,
     payload:      term,
-    complete?:    boolean
   }
 
   @empty_key <<0::16 * 8>>
@@ -108,10 +111,10 @@ defmodule Erps.Packet do
     version_req = opts[:versions]
 
     # set the appropriate lambda to use for unpickling.
-    binary_to_term = if opts[:safe] do
-      &Plug.Crypto.non_executable_binary_to_term(&1, [:safe])
-    else
+    binary_to_term = if opts[:safe] == false do
       &:erlang.binary_to_term/1
+    else
+      &Plug.Crypto.non_executable_binary_to_term(&1, [:safe])
     end
 
     version = %Version{major: v1, minor: v2, patch: v3, pre: []}

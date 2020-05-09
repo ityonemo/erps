@@ -3,6 +3,8 @@ defmodule ErpsTest.Parameters.ClientTest do
 
   alias Erps.Packet
 
+  @moduletag :parameters
+
   defp accept_loop(test_pid, sock) do
     {:ok, asock} = :gen_tcp.accept(sock)
     # make test_pid the owner of the socket.
