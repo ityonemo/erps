@@ -4,7 +4,7 @@ defmodule Erps.MixProject do
   def project do
     [
       app: :erps,
-      version: "0.4.2",
+      version: "0.5.0",
       elixir: "~> 1.10",
       description: "TLS-based remote protocol (call/cast) server",
       elixirc_paths: elixirc_paths(Mix.env()),

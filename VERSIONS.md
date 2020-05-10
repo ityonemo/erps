@@ -62,11 +62,14 @@
 - last version prior to full revision of code.
 - bugfix: makes client init not crash on invalid connection error
 
+## 0.5.0
+
+- implementation of daemon strategy
+- use of `Transport` library for TCP/TLS commonalities
+- use of `Connection` library to sanely manage the client
+
 ## Planned features:
 
-- Daemon strategy which will allow for failure-isolated inbound
-  connections
 - reactivation of HMAC signing with better crypto tests
 - rebuild OneWayTls strategy
-- integration of `https://github.com/fishcakez/connection` library
 - use ETS tables to manage connection information
