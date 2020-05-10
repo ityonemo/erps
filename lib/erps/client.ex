@@ -126,13 +126,24 @@ defmodule Erps.Client do
     Module.register_attribute(__CALLER__.module, :reconnect,   persist: true)
 
     encode_opts = Keyword.take(options, [:compressed])
+    supervision_opts = Keyword.take(options, [:id, :restart, :shutdown])
 
     quote do
+      def child_spec({data, opts}) do
+        default = %{
+          id: {opts[:server], opts[:port]},
+          start: {__MODULE__, :start_link, [data, opts]}
+        }
+        Supervisor.child_spec(default, unquote(Macro.escape(supervision_opts)))
+      end
+
       @behaviour   Erps.Client
       @base_packet unquote(base_packet)
       @encode_opts unquote(encode_opts)
       @sign_with   unquote(options[:sign_with])
       @reconnect   unquote(options[:reconnect])
+
+      defoverridable child_spec: 1
     end
   end
 
@@ -402,7 +413,6 @@ defmodule Erps.Client do
     {:noreply, state}
   end
 
-  # TODO: make this call the transport API
   @closed [:tcp_closed, :ssl_closed, :closed, :enotconn]
 
   @impl true

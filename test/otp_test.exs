@@ -1,5 +1,8 @@
 defmodule ErpsTest.OtpTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
+
+  alias Erps.Daemon
 
   @moduletag :otp
 
@@ -16,9 +19,8 @@ defmodule ErpsTest.OtpTest do
       Erps.Client.start_link(__MODULE__, test_pid, [server: @localhost] ++ opts)
     end
 
-    def handle_push(:die, state), do: {:stop, :die, state}
-    def handle_push(:ping, test_pid) do
-      send(test_pid, :ping)
+    def handle_push(any, test_pid) do
+      send(test_pid, any)
       {:noreply, test_pid}
     end
 
@@ -28,119 +30,138 @@ defmodule ErpsTest.OtpTest do
   defmodule Server do
     use Erps.Server
 
-    def start(state) do
-      Erps.Server.start(__MODULE__, state, [])
+    def start(test_pid) do
+      Erps.Server.start(__MODULE__, test_pid, [])
     end
 
-    def start_link(state, opts \\ []) do
-      Erps.Server.start_link(__MODULE__, state, opts)
+    def start_link(test_pid, opts \\ []) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
-    def init(state), do: {:ok, state}
+    def init(test_pid) do
+      send(test_pid, {:server, self()})
+      {:ok, test_pid}
+    end
   end
 
   describe "when you kill the client" do
-    test "the server is okay" do
-      {:ok, server} = Server.start_link(:ok)
-      {:ok, port} = Erps.Server.port(server)
+    test "the server dies" do
+      {:ok, sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, daemon} = Daemon.start_link(Server, self(), server_supervisor: sup)
+      {:ok, port} = Daemon.port(daemon)
       {:ok, client} = Client.start(self(), port: port)
 
-      Process.sleep(20)
-      Process.exit(client, :kill)
-      Process.sleep(50)
+      server = receive do {:server, server} -> server end
+      # watch the client and server
+      Process.monitor(client)
+      Process.monitor(server)
 
-      assert Process.alive?(server)
+      Process.sleep(20)
+
+      log = capture_log(fn ->
+        Process.exit(client, :kill)
+        assert_receive {:DOWN, _, _, ^client, :killed}, 500
+        assert_receive {:DOWN, _, _, ^server, :disconnected}, 500
+      end)
+
+      assert log =~ "error"
+      assert log =~ "disconnected"
     end
   end
 
   describe "when you kill the server" do
     test "client will get killed" do
-      {:ok, server} = Server.start(:ok)
-      {:ok, port} = Erps.Server.port(server)
+      {:ok, sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, daemon} = Daemon.start_link(Server, self(), server_supervisor: sup)
+      {:ok, port} = Daemon.port(daemon)
       {:ok, client} = Client.start(self(), port: port)
-      # watch the client
+
+      server = receive do {:server, server} -> server end
+      # watch the client and server
       Process.monitor(client)
+      Process.monitor(server)
 
+      # kill the server
       Process.sleep(20)
-      Process.exit(server, :kill)
+      log = capture_log(fn ->
+        Process.exit(server, :kill)
+        assert_receive {:DOWN, _, _, ^server, :killed}, 500
+        assert_receive {:DOWN, _, _, ^client, :disconnected}, 500
+      end)
 
-      assert_receive {:DOWN, _, _, ^client, :closed}, 500
+      assert log =~ "error"
+      assert log =~ "disconnected"
+
     end
   end
 
   describe "a supervised server/client pair" do
     test "has the client reconnect if it dies" do
-      port = Enum.random(10_000..30_000)
-      server_spec = %{id: Server, start: {Server, :start_link, [:ok, [port: port, name: :server1]]}}
-      Supervisor.start_link([server_spec], strategy: :one_for_one)
-      Process.sleep(20)
-      client_spec = %{id: Client, start: {Client, :start_link, [self(), [port: port]]}}
-      {:ok, client_sup} = Supervisor.start_link([client_spec], strategy: :one_for_one)
-      Process.sleep(20)
+      {:ok, server_sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, daemon} = Daemon.start_link(Server, self(), server_supervisor: server_sup)
+      {:ok, port} = Daemon.port(daemon)
 
-      # retrieve the client PID
-      [{_, client, _, _}] = Supervisor.which_children(client_sup)
+      {:ok, client_sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, client} = DynamicSupervisor.start_child(client_sup, {Client, {self(), port: port}})
+
+      assert_receive {:server, server}
+      # watch the client and server
       Process.monitor(client)
+      Process.monitor(server)
 
-      # make sure we can perform a connection.
-      Server.push(:server1, :ping)
-      assert_receive :ping
-
-      # now kill the client.
-      Process.exit(client, :kill)
-
-      assert_receive {:DOWN, _, _, ^client, :killed}, 500
-
-      # let it reconnect
+      # wait for a bit...
       Process.sleep(20)
+      log = capture_log(fn ->
+        Process.exit(client, :kill)
 
-      # but we can still use the connection
-      Server.push(:server1, :ping)
-      assert_receive :ping
-    end
-
-    test "has the connection reestablish if both sides die" do
-      port = Enum.random(10_000..30_000)
-      test_pid = self()
-
-      # peform supervision out of band so that we don't trap a stray "killed" signal.
-      sups = spawn(fn ->
-        server_spec = %{id: Server, start: {Server, :start_link, [:ok, [port: port, name: :server2]]}}
-        {:ok, server_sup} = Supervisor.start_link([server_spec], strategy: :one_for_one)
-        client_spec = %{id: Client, start: {Client, :start_link, [test_pid, [port: port]]}}
-        {:ok, client_sup} = Supervisor.start_link([client_spec], strategy: :one_for_one)
-        Process.sleep(20)
-        send(test_pid, {server_sup, client_sup})
-        receive do :done -> :done end
+        # wait for it...
+        assert_receive {:DOWN, _, _, ^client, :killed}, 500
+        assert_receive {:DOWN, _, _, ^server, :disconnected}, 500
       end)
 
-      {server_sup, client_sup} = receive do any -> any end
+      assert log =~ "error"
+      assert log =~ "disconnected"
 
-      # retrieve the server and client PIDs
-      [{_, server, _, _}] = Supervisor.which_children(server_sup)
-      [{_, client, _, _}] = Supervisor.which_children(client_sup)
-      Process.monitor(server)
+      # the server will be rezzed and we will be able to use it to
+      # send a message via the new client.
+      assert_receive {:server, new_server}
+      Erps.Server.push(new_server, :foo)
+      assert_receive(:foo)
+    end
+
+    test "has the server reconnect if it dies" do
+      {:ok, server_sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, daemon} = Daemon.start_link(Server, self(), server_supervisor: server_sup)
+      {:ok, port} = Daemon.port(daemon)
+
+      {:ok, client_sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, client} = DynamicSupervisor.start_child(client_sup, {Client, {self(), port: port}})
+
+      assert_receive {:server, server}
+      # watch the client and server
       Process.monitor(client)
+      Process.monitor(server)
 
-      # make sure we can perform a connection.
-      Server.push(:server2, :ping)
-      assert_receive :ping
+      # wait for a bit...
+      Process.sleep(20)
+      log = capture_log(fn ->
+        Process.exit(server, :kill)
 
-      # now kill the server.
-      Process.exit(server, :kill)
+        # wait for it...
+        assert_receive {:DOWN, _, _, ^server, :killed}, 500
+        assert_receive {:DOWN, _, _, ^client, :disconnected}, 500
+      end)
 
-      # check that our server has died.
-      assert_receive {:DOWN, _, _, ^server, :killed}, 500
-      assert_receive {:DOWN, _, _, ^client, _}, 200
+      assert log =~ "error"
+      assert log =~ "disconnected"
 
-      Process.sleep(200)
-
-      # but we can still use the connection
-      Server.push(:server2, :ping)
-      assert_receive :ping
-
-      # clean up the supervisors
-      send(sups, :done)
+      # the server will be rezzed and we will be able to use it to
+      # send a message via the new client.
+      assert_receive {:server, new_server}
+      # wait for connection renegotiation
+      Process.sleep(20)
+      Erps.Server.push(new_server, :foo)
+      assert_receive(:foo)
     end
   end
 end

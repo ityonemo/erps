@@ -5,6 +5,8 @@ defmodule Erps.Daemon do
   # testing, this defaults to Tcp.  If you're testing your own erps server,
   # you can override this with the transport argument.
 
+  require Logger
+
   if Mix.env in [:dev, :test] do
     @default_transport Transport.Tcp
   else
@@ -138,12 +140,11 @@ defmodule Erps.Daemon do
   #  supervisor.start_child(name,
   #    {server, to_server(state, child_sock)})
   #end
-  #defp do_start_server(
-  #    state = %{server_supervisor: sup, server_module: server}, child_sock) do
-  #  # default, DynamicSupervisor case
-  #  DynamicSupervisor.start_child(sup,
-  #    {server, to_server(state, child_sock)})
-  #end
+  defp do_start_server(
+      state = %{server_supervisor: sup, server_module: server}, child_sock) do
+    # default, DynamicSupervisor case
+    DynamicSupervisor.start_child(sup, {server, to_server(state, child_sock)})
+  end
 
   #############################################################################
   ## Reentrant function that lets us keep accepting forever.
@@ -159,6 +160,8 @@ defmodule Erps.Daemon do
       {:error, :timeout} ->
         # this is normal.  Just quit out and enter the accept loop.
         :ok
+      {:error, error} ->
+        Logger.error("unexpected error connecting #{inspect error}")
     end
     # trigger the next round of accepts.
     trigger_accept()

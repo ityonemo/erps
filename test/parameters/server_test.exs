@@ -180,11 +180,14 @@ defmodule ErpsTest.Parameters.ServerTest do
   defmodule ServerSafe do
     use Erps.Server
 
-    def start_link(test_pid) do
-      Erps.Server.start_link(__MODULE__, test_pid)
+    def start_link(test_pid, opts \\ []) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
-    def init(test_pid), do: {:ok, test_pid}
+    def init(test_pid) do
+      send(test_pid, {:server, self()})
+      {:ok, test_pid}
+    end
 
     def handle_cast(_, test_pid) do
       send(test_pid, :pong)
@@ -199,7 +202,10 @@ defmodule ErpsTest.Parameters.ServerTest do
       Erps.Server.start_link(__MODULE__, test_pid)
     end
 
-    def init(test_pid), do: {:ok, test_pid}
+    def init(test_pid) do
+      send(test_pid, {:server, self()})
+      {:ok, test_pid}
+    end
 
     def handle_cast(_, test_pid) do
       send(test_pid, :pong)
@@ -229,7 +235,8 @@ defmodule ErpsTest.Parameters.ServerTest do
       {:ok, port} = Daemon.port(daemon)
 
       {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
-      Process.sleep(150)
+
+      assert_receive {:server, _server}
 
       encapsulate_send(sock, @binary_ping)
 
@@ -237,18 +244,20 @@ defmodule ErpsTest.Parameters.ServerTest do
     end
 
     test "sending an unsafe payload fails" do
-      {:ok, daemon} = Daemon.start_link(ServerSafe, self())
+      {:ok, server_sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, daemon} = Daemon.start_link(ServerSafe, self(), server_supervisor: server_sup)
       {:ok, port} = Daemon.port(daemon)
 
       {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
-      Process.sleep(150)
+
+      assert_receive {:server, server}
 
       encapsulate_send(sock, @binary_foobarquux)
 
       refute_receive :pong
 
-      # THIS SHOULD CLOSE THE CONNECTION, SO WE NEED TO MAKE SURE THE
-      # DAEMON IS DOING WHAT IS EXPECTED
+      # make sure the server has been torched.
+      refute Process.alive?(server)
     end
   end
 
@@ -258,7 +267,8 @@ defmodule ErpsTest.Parameters.ServerTest do
       {:ok, port} = Daemon.port(daemon)
 
       {:ok, sock} = :gen_tcp.connect(@localhost, port, [:binary, active: true])
-      Process.sleep(150)
+
+      assert_receive {:server, _server}
 
       encapsulate_send(sock, @binary_foobazquux)
 

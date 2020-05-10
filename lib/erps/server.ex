@@ -110,12 +110,27 @@ defmodule Erps.Server do
         description: "identifier size too large"
     end
 
+    supervision_opts = Keyword.take(opts, [:id, :restart, :shutdown])
+
     quote do
       @behaviour Erps.Server
 
       # define a set of "magic functions".
       defdelegate push(srv, push), to: Erps.Server
       defdelegate disconnect(srv), to: Erps.Server
+
+      # define a default child_spec, which is overrideable.
+
+      def child_spec({state, options}) do
+        default = %{
+          id: options[:socket],
+          start: {__MODULE__, :start_link, [state, options]},
+          restart: :temporary
+        }
+        Supervisor.child_spec(default, unquote(Macro.escape(supervision_opts)))
+      end
+
+      defoverridable child_spec: 1
 
       @decode_opts unquote(decode_opts)
       @verification unquote(verification)
@@ -250,6 +265,8 @@ defmodule Erps.Server do
     end
   end
 
+  @closed [:tcp_closed, :ssl_closed, :closed, :enotconn]
+
   # performs the socket receive loop.
   defp recv_impl(state = %{socket: socket, module: module}) do
     case Packet.get_data(state.transport, socket, state.decode_opts) do
@@ -270,6 +287,8 @@ defmodule Erps.Server do
       {:error, :timeout} ->
         recv_loop()
         {:noreply, state}
+      {:error, closed} when closed in @closed ->
+        {:stop, :disconnected, state}
       {:error, error} when is_binary(error) ->
         tcp_data = Packet.encode(%Packet{
           type: :error,
@@ -404,7 +423,6 @@ defmodule Erps.Server do
       module.terminate(reason, state.data)
     end
   end
-
 
   #############################################################################
   ## ADAPTERS
