@@ -131,12 +131,11 @@ defmodule Erps.Daemon do
     # requires start_link/2
     server.start_link(data, server_opts)
   end
-  #defp do_start_server(
-  #    state = %{server_supervisor: {supervisor, name}, server_module: server}, child_sock) do
-  #  # custom supervisor case.
-  #  supervisor.start_child(name,
-  #    {server, to_server(state, child_sock)})
-  #end
+  defp do_start_server(
+      state = %{server_supervisor: {supervisor, sup}, server_module: server}) do
+    # custom supervisor case.
+    supervisor.start_child(sup, {server, to_server(state)})
+  end
   defp do_start_server(
       state = %{server_supervisor: sup, server_module: server}) do
     # default, DynamicSupervisor case

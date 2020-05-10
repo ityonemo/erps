@@ -164,4 +164,20 @@ defmodule ErpsTest.OtpTest do
       assert_receive(:foo)
     end
   end
+
+  describe "custom supervisor module strategy works" do
+    test "client will get killed" do
+      {:ok, sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+      {:ok, daemon} = Daemon.start_link(Server, self(),
+        server_supervisor: {DynamicSupervisor, sup})
+      {:ok, port} = Daemon.port(daemon)
+      {:ok, _client} = Client.start_link(self(), port: port)
+
+      assert_receive {:server, server}
+      Process.sleep(20)
+      Erps.Server.push(server, :foo)
+      assert_receive(:foo)
+    end
+  end
+
 end
