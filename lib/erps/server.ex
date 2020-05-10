@@ -255,7 +255,7 @@ defmodule Erps.Server do
     # perform ssl handshake, upgrade to TLS.
     # next, wait for the subscription signal and set up the phoenix
     # pubsub subscriptions.
-    case transport.handshake(socket, state.tls_opts) do
+    case transport.handshake(socket, tls_opts: state.tls_opts) do
       {:ok, upgraded_socket} ->
         recv_loop()
         {:reply, :ok,

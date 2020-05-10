@@ -260,10 +260,10 @@ defmodule Erps.Client do
     |> Keyword.merge(instance_options)
     |> Keyword.merge(module: module)
 
-    # note: you have to always connect to an ssl connections using active: false, otherwise
-    # TLS synchronization handshake will fail.
+    tls_opts = Keyword.take(state_params, [:tls_opts])
+
     with {:ok, socket} <- transport.connect(server, port),
-         {:ok, upgraded} <- transport.upgrade(socket, [active: false] ++ state_params[:tls_opts]) do
+         {:ok, upgraded} <- transport.upgrade(socket, tls_opts) do
       Process.send_after(self(), :"$keepalive", state_params[:keepalive])
       recv_loop()
       start
