@@ -28,6 +28,13 @@ defmodule Erps do
   To that end, the Erps Client and Daemon support self-healing connections by
   default.
 
+  ## Testability
+
+  To make working with your program easier in developer or staging environments,
+  Erps can be configured to use TCP.  In order to seamlessly switch between these
+  transport modules, Erps uses the `Transport` library; both clients and servers
+  may be launched with `transport: Transport.Tcp` to use this mode.
+
   ## Security model
 
   Erps currently presumes that once authenticated, both ends of the Erps
