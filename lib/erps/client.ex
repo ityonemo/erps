@@ -73,6 +73,8 @@ defmodule Erps.Client do
     across the network from different processes and they will be routed
     correctly and will only interfere with each other in terms of the
     connection arbitration overhead.
+  - `handle_continue/2` is currently not supported.  This is a limitation
+    in the `Connection` library.
   """
 
   @behaviour Connection
@@ -312,7 +314,7 @@ defmodule Erps.Client do
 
   Only use this function after using `disconnect/1`
   """
-  def connect(server), do: GenServer.call(server, :"connect")
+  def connect(server), do: GenServer.call(server, :"$connect")
 
   @spec disconnect(GenServer.server) :: :ok
   @doc """
@@ -485,7 +487,7 @@ defmodule Erps.Client do
       {:ok, data, timeout} when is_integer(timeout) ->
         {:backoff, timeout, struct(__MODULE__, [data: data] ++ parameters), timeout}
       {:ok, _, {:continue, _}} ->
-        raise ArgumentError, message: "continuations are not supported"
+        raise ArgumentError, message: "continuations are not currently supported"
       any -> any
     end
   end
@@ -494,8 +496,10 @@ defmodule Erps.Client do
     case noreply_resp do
       {:noreply, data} ->
         {:noreply, %{state | data: data}}
-      {:noreply, data, timeout_or_continue} ->
-        {:noreply, %{state | data: data}, timeout_or_continue}
+      {:noreply, data, timeout} when is_integer(timeout)->
+        {:noreply, %{state | data: data}, timeout}
+      {:noreply, data, {:continue, _}} ->
+        raise ArgumentError, message: "continuations are not currently supported"
       {:stop, reason, new_state} ->
         {:stop, reason, %{state | data: new_state}}
       any -> any
