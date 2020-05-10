@@ -23,12 +23,6 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
       send(test_pid, :ping)
       {:noreply, test_pid}
     end
-
-    @impl true
-    def handle_continue(continue, test_pid) do
-      send(test_pid, continue)
-      {:noreply, test_pid}
-    end
   end
 
   defp springload_init(init_result) do
@@ -52,14 +46,6 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
       # verify that all is well.
       Erps.Server.push(server(), :ping)
       assert_receive :ping
-    end
-
-    test "can send into a continuation", %{port: port} do
-      async = springload_init({:ok, self(), {:continue, :continued}})
-      Client.start_link(port, async.pid)
-
-      # verify that we transition to continued
-      assert_receive :continued
     end
 
     test "can just ignore", %{port: port} do

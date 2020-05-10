@@ -180,7 +180,6 @@ defmodule ErpsTest.OtpTest do
     end
   end
 
-  @tag :one
   test "supervising the daemon" do
     {:ok, sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
     port = Enum.random(10000..20000)

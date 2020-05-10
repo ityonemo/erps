@@ -28,11 +28,6 @@ defmodule ErpsTest.Callbacks.ClientTest do
     end
 
     @impl true
-    def handle_continue(continue, test_pid) do
-      instrumented(:continue, continue, test_pid)
-    end
-
-    @impl true
     def handle_info(info, test_pid) do
       instrumented(:info, info, test_pid)
     end
@@ -82,14 +77,6 @@ defmodule ErpsTest.Callbacks.ClientTest do
       {:push, :bar} = Task.await(task)
     end
 
-    test "the client can process a noreply with continuation", %{port: port} do
-      Client.start_link(port, self())
-      Process.sleep(20)
-      Server.push(server(), :foo)
-      {:push, :foo} = inject({:noreply, self(), {:continue, :bar}})
-      {:continue, :bar} = inject({:noreply, self()})
-    end
-
     test "the client can process a {:stop, reason, state}", %{port: port} do
       {:ok, client} = Client.start(port, self())
       Process.monitor(client)
@@ -101,45 +88,12 @@ defmodule ErpsTest.Callbacks.ClientTest do
     end
   end
 
-  describe "when instrumented with a handle_continue response" do
-    # NB: continue's basic noreply response is tested above ^^
-    test "the client can process a mutating continuation", %{port: port} do
-      Client.start_link(port, self())
-      Process.sleep(20)
-      svr = server()
-      Server.push(svr, :foo)
-      {:push, :foo} = inject({:noreply, self(), {:continue, :bar}})
-      {:continue, :bar} = inject({:noreply, self()})
-      Server.push(svr, :baz)
-      {:push, :baz} = inject({:noreply, self()})
-    end
-
-    test "the client can process a stop message", %{port: port} do
-      {:ok, client} = Client.start(port, self())
-      Process.monitor(client)
-      Process.sleep(20)
-      Server.push(server(), :foo)
-      {:push, :foo} = inject({:noreply, self(), {:continue, :bar}})
-      {:continue, :bar} = inject({:stop, :normal, self()})
-      {:terminate, :normal} = inject("unimportant term")
-      assert_receive {:DOWN, _, _, ^client, :normal}
-    end
-  end
-
   describe "when instrumented with a handle_info response" do
     test "the client can process a {:noreply, state}", %{port: port} do
       {:ok, client} = Client.start_link(port, self())
       Process.sleep(20)
       send(client, :foo)
       {:info, :foo} = inject({:noreply, self()})
-    end
-
-    test "the client can process a noreply with a continuation", %{port: port} do
-      {:ok, client} = Client.start_link(port, self())
-      Process.sleep(20)
-      send(client, :foo)
-      {:info, :foo} = inject({:noreply, self(), {:continue, :bar}})
-      {:continue, :bar} = inject({:noreply, self()})
     end
 
     test "the client can process a stop message", %{port: port} do

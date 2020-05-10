@@ -65,9 +65,17 @@ defmodule Erps.Client do
     def init(iv), do: {:ok, iv}
   end
   ```
+
+  ## Important Notes
+
+  - Calls are non-blocking for the Erps clients (and can be for the servers,
+    if you so implement them).  You may issue multiple, asynchronous calls
+    across the network from different processes and they will be routed
+    correctly and will only interfere with each other in terms of the
+    connection arbitration overhead.
   """
 
-  @behaviour GenServer
+  @behaviour Connection
 
   @zero_version %Version{major: 0, minor: 0, patch: 0, pre: []}
 
@@ -131,14 +139,15 @@ defmodule Erps.Client do
 
   # one minute keepalive interval.
   @default_keepalive 60_000
+  @default_reply_ttl 5000
 
-  defstruct [:module, :socket, :server, :port, :data, :base_packet,
-    :encode_opts, :hmac_key, :signature, :reconnect, tls_opts: [],
-    decode_opts: [safe: true],
+  defstruct [:module, :tcp_socket, :socket, :server, :port, :data,
+    :base_packet, :encode_opts, :hmac_key, :signature, :reconnect,
+    tls_opts: [], decode_opts: [safe: true],
     keepalive: @default_keepalive,
     transport: @default_transport,
     reply_cache: %{},
-    reply_ttl: 5000
+    reply_ttl: @default_reply_ttl
   ]
 
   # these two features are currently disabled, pending investigation
@@ -180,7 +189,7 @@ defmodule Erps.Client do
   """
   def start(module, state, opts) do
     {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    GenServer.start(__MODULE__, {module, state, inner_opts}, gen_server_opts)
+    Connection.start(__MODULE__, {module, state, inner_opts}, gen_server_opts)
   end
 
   @doc """
@@ -210,7 +219,7 @@ defmodule Erps.Client do
   """
   def start_link(module, state, opts) do
     {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    GenServer.start_link(__MODULE__, {module, state, inner_opts}, gen_server_opts)
+    Connection.start_link(__MODULE__, {module, state, inner_opts}, gen_server_opts)
   end
 
   @default_options [
@@ -219,14 +228,11 @@ defmodule Erps.Client do
     tls_opts: []]
 
   @impl true
-  def init({module, start, opts}) do
+  def init({module, data, opts}) do
     instance_options = get_instance_options(opts)
-    hmac_key = instance_options[:hmac_key]
-    transport = instance_options[:transport]
 
-    module_options = get_module_options(module, hmac_key)
+    module_options = get_module_options(module)
 
-    port = opts[:port]
     server = case opts[:server] do
       dns_name when is_binary(dns_name) ->
         String.to_charlist(dns_name)
@@ -239,63 +245,55 @@ defmodule Erps.Client do
     state_params = @default_options
     |> Keyword.merge(module_options)
     |> Keyword.merge(instance_options)
-    |> Keyword.merge(module: module)
+    |> Keyword.merge(module: module, server: server)
 
-    tls_opts = Keyword.take(state_params, [:tls_opts])
-
-    with {:ok, socket} <- transport.connect(server, port),
-         {:ok, upgraded} <- transport.upgrade(socket, tls_opts) do
-      Process.send_after(self(), :"$keepalive", state_params[:keepalive])
-      recv_loop()
-      start
-      |> module.init()
-      |> process_init(state_params ++ [socket: upgraded])
-    else
-      {:error, :econnrefused} ->
-        # send a reconnect message back to the process.
-        Process.send_after(self(), :"$reconnect", state_params[:reconnect])
-        start
-        |> module.init()
-        |> process_init(state_params ++ [socket: nil])
-      {:error, msg} ->
-        {:stop, msg}
-    end
+    data
+    |> module.init()
+    |> process_init(state_params)
   end
 
   defp get_instance_options(opts) do
-    hmac_key_option = case opts[:hmac_key] do
-      function when is_function(function, 0) ->
-        [hmac_key: function.()]
-      binary when is_binary(binary) -> [hmac_key: binary]
-      _ -> []
-    end
-
     basic_options = Keyword.take(opts, [:tls_opts,
       :safe, :transport, :reconnect])
     transport = opts[:transport] || @default_transport
 
-    adjusted_options = hmac_key_option ++ basic_options ++
-    [transport: transport]
+    adjusted_options = basic_options ++ [transport: transport]
 
     Keyword.merge(opts, adjusted_options)
   end
 
-  defp get_module_options(module, hmac_key) do
+  defp get_module_options(module) do
     attributes = module.__info__(:attributes)
     [base_packet] = attributes[:base_packet]
-
     encode_options = attributes[:encode_opts]
-
-    reconnect_option = case module.__info__(:attributes)[:reconnect] do
-      [nil] -> []
-      [mod_reconnect] -> [reconnect: mod_reconnect]
-    end
-
-    [base_packet: struct(base_packet, hmac_key: hmac_key),
-     encode_opts: encode_options]
-    ++ reconnect_option
+    [base_packet: base_packet, encode_opts: encode_options]
   end
-  
+
+  #############################################################################
+  ## Connection Boilerplate
+
+  @impl true
+  def connect(_, state = %{transport: transport}) do
+    with {:ok, socket} <- transport.connect(state.server, state.port),
+         {:ok, upgraded} <- transport.upgrade(socket, tls_opts: state.tls_opts) do
+      # start up the repetitive loops
+      keepalive_loop(state)
+      recv_loop()
+      {:ok, %{state | tcp_socket: socket, socket: upgraded}}
+    else
+      {:error, :econnrefused} ->
+        {:backoff, state.reconnect, state}
+      {:error, msg} ->
+        {:stop, msg, state}
+    end
+  end
+
+  @impl true
+  def disconnect(_, state) do
+    :gen_tcp.close(state.tcp_socket)
+    {:noconnect, state}
+  end
+
   #############################################################################
   ## API
 
@@ -307,6 +305,24 @@ defmodule Erps.Client do
   depending on what transport strategy you're using.
   """
   def socket(server), do: GenServer.call(server, :"$socket")
+
+  @spec connect(GenServer.server) :: :ok
+  @doc """
+  triggers a connection.
+
+  Only use this function after using `disconnect/1`
+  """
+  def connect(server), do: GenServer.call(server, :"connect")
+
+  @spec disconnect(GenServer.server) :: :ok
+  @doc """
+  triggers a disconnection.
+
+  Useful to silence persistent Erps clients during maintenance phases.
+  Note: this might cause upstream errors as consumers of the Erps service
+  will emit errors on calls and casts.
+  """
+  def disconnect(server), do: GenServer.call(server, :"$disconnect")
 
   #############################################################################
   ## ROUTER
@@ -325,6 +341,12 @@ defmodule Erps.Client do
   @spec handle_call(call :: term, GenServer.from, state) :: reply_response
   def handle_call(:"$socket", _, state) do
     {:reply, state.socket, state}
+  end
+  def handle_call(:"$connect", _, state) do
+    {:connect, :later, :ok, state}
+  end
+  def handle_call(:"$disconnect", _, state) do
+    {:disconnect, :later, :ok, state}
   end
   def handle_call(_, _, %{socket: nil}) do
     raise "call attempted when the client is not connected"
@@ -401,24 +423,10 @@ defmodule Erps.Client do
         {:noreply, state}
     end
   end
-  def handle_info(:"$reconnect", state = %{socket: nil, transport: transport}) do
-    with {:ok, socket} <- transport.connect(state.server, state.port),
-         {:ok, upgraded} <- transport.upgrade(socket, [active: false] ++ state.tls_opts) do
-      recv_loop()
-      Process.send_after(self(), :"$keepalive", state.keepalive)
-      {:noreply, %{state | socket: upgraded}}
-    else
-      {:error, :econnrefused} ->
-        Process.send_after(self(), :"$reconnect", state.reconnect)
-        {:noreply, state}
-      {:error, error} ->
-        {:stop, error, state}
-    end
-  end
   def handle_info(:"$keepalive", state = %{transport: transport}) do
     keepalive_packet = Packet.encode(%Packet{})
     transport.send(state.socket, keepalive_packet)
-    Process.send_after(self(), :"$keepalive", state.keepalive)
+    keepalive_loop(state)
     {:noreply, do_check_expired_calls(state)}
   end
   def handle_info({closed, _}, state) when closed in @closed do
@@ -442,14 +450,6 @@ defmodule Erps.Client do
   end
 
   @impl true
-  @spec handle_continue(continue :: term, state) :: noreply_response
-  def handle_continue(continuation, state = %{module: module}) do
-    continuation
-    |> module.handle_continue(state.data)
-    |> process_noreply(state)
-  end
-
-  @impl true
   @spec terminate(reason, state) :: term
     when reason: :normal | :shutdown | {:shutdown, term}
   def terminate(reason!, state = %{module: module}) do
@@ -467,15 +467,25 @@ defmodule Erps.Client do
     Process.send_after(self(), :recv, @recv_timeout)
   end
 
+  defp keepalive_loop(state) do
+    Process.send_after(self(), :"$keepalive", state.keepalive)
+  end
+
   #############################################################################
   ## ADAPTERS
+
+  @noops [:infinity, :hibernate]
 
   defp process_init(init_resp, parameters) do
     case init_resp do
       {:ok, data} ->
-        {:ok, struct(__MODULE__, [data: data] ++ parameters)}
-      {:ok, data, timeout_or_continue} ->
-        {:ok, struct(__MODULE__, [data: data] ++ parameters), timeout_or_continue}
+        {:connect, :init, struct(__MODULE__, [data: data] ++ parameters)}
+      {:ok, data, noop} when noop in @noops ->
+        {:connect, :init, struct(__MODULE__, [data: data] ++ parameters)}
+      {:ok, data, timeout} when is_integer(timeout) ->
+        {:backoff, timeout, struct(__MODULE__, [data: data] ++ parameters), timeout}
+      {:ok, _, {:continue, _}} ->
+        raise ArgumentError, message: "continuations are not supported"
       any -> any
     end
   end
@@ -491,6 +501,9 @@ defmodule Erps.Client do
       any -> any
     end
   end
+
+  @doc false
+  defdelegate code_change(a, b, c), to: Connection
 
   #############################################################################
   ## API Definition
@@ -557,36 +570,6 @@ defmodule Erps.Client do
     when new_state: term()
 
   @doc """
-  Invoked when an internal callback requests a continuation, using `{:noreply,
-  state, {:continue, continuation}}`, or from `c:init/1` using
-  `{:ok, state, {:continue, continuation}}`
-
-  The continuation is passed as the first argument of this callback.  Most
-  useful if `c:init/1` functionality is long-running and needs to be broken
-  up into separate parts so that the calling `start_link/3` doesn't block.
-
-  see: `c:GenServer.handle_continue/2`.
-
-  ### Return codes
-  - `{:noreply, new_state}` continues the loop with new state `new_state`
-  - `{:noreply, new_state, timeout}` causes a :timeout message to be sent to
-    `c:handle_info/2` *if no other message comes by*
-  - `{:noreply, new_state, :hibernate}`, causes a hibernation event (see
-    `:erlang.hibernate/3`)
-  - `{:noreply, new_state, {:continue, term}}` causes a continuation to be
-    triggered after the message is handled, it will be sent to
-    `c:handle_continue/3`
-  - `{:stop, reason, new_state}` terminates the loop, passing `new_state`
-    to `c:terminate/2`, if it's implemented.
-  """
-
-  @callback  handle_continue(continue :: term(), state :: term()) ::
-    {:noreply, new_state}
-    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
-    | {:stop, reason :: term(), new_state}
-    when new_state: term()
-
-  @doc """
   Invoked when the client is about to exit.
 
   This would usually occur due to `handle_push/2` returning a
@@ -596,5 +579,5 @@ defmodule Erps.Client do
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}
 
-  @optional_callbacks handle_continue: 2, handle_info: 2, handle_push: 2, terminate: 2
+  @optional_callbacks handle_info: 2, handle_push: 2, terminate: 2
 end
