@@ -48,32 +48,4 @@ defmodule ErpsTest.ClientConnectionTest do
       Process.exit(client, :kill)
     end
   end
-
-  defmodule Server do
-    use Erps.Server
-
-    def start_link(port) do
-      Erps.Server.start(__MODULE__, self(), port: port)
-    end
-
-    def init(test_pid), do: {:ok, test_pid}
-
-    # just reflect calls back.
-    def handle_call(any, _from, state), do: {:reply, any, state}
-  end
-
-  test "clients can reconnect to servers" do
-    port = Enum.random(10_000..30_000)
-    {:ok, client} = Client.start_link(port)
-
-    # give it 750 milliseconds
-    Process.sleep(750)
-
-    Server.start_link(port)
-
-    # give the client plenty of time to reconnect
-    Process.sleep(150)
-
-    assert :foo == GenServer.call(client, :foo, 500)
-  end
 end

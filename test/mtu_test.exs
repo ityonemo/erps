@@ -4,13 +4,18 @@ defmodule ErpsTest.MtuTest do
 
   use ExUnit.Case, async: true
 
+  alias Erps.Daemon
+
+  @moduletag :mtu
+
   defmodule Client do
     use Erps.Client
 
     @localhost {127, 0, 0, 1}
 
-    def start_link(port) do
-      Erps.Client.start_link(__MODULE__, self(), server: @localhost, port: port)
+    def start_link(test_pid, port) do
+      Erps.Client.start_link(__MODULE__, test_pid,
+        server: @localhost, port: port)
     end
 
     def init(test_pid), do: {:ok, test_pid}
@@ -27,11 +32,14 @@ defmodule ErpsTest.MtuTest do
   defmodule Server do
     use Erps.Server
 
-    def start_link(_) do
-      Erps.Server.start_link(__MODULE__, self(), [])
+    def start_link(test_pid, opts) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
-    def init(test_pid), do: {:ok, test_pid}
+    def init(test_pid) do
+      send(test_pid, {:server, self()})
+      {:ok, test_pid}
+    end
 
     def push_data(srv, data), do: Erps.Server.push(srv, {:push, data})
 
@@ -43,26 +51,27 @@ defmodule ErpsTest.MtuTest do
 
   describe "An Erps server" do
     test "can accept a call of size bigger than the MTU" do
-      {:ok, server} = Server.start_link(nil)
-      {:ok, port} = Erps.Server.port(server)
-      {:ok, client} = Client.start_link(port)
+      {:ok, daemon} = Daemon.start_link(Server, self())
+      {:ok, port} = Daemon.port(daemon)
+      {:ok, client} = Client.start_link(self(), port)
 
       data = <<0::10240 * 8>>
 
       assert :ok = Client.send_data(client, data)
-      assert_receive {:send, ^data}
+      assert_receive {:send, ^data}, 500
     end
 
     test "can send a push of size bigger than the MTU" do
-      {:ok, server} = Server.start_link(nil)
-      {:ok, port} = Erps.Server.port(server)
-      {:ok, _client} = Client.start_link(port)
+      {:ok, daemon} = Daemon.start_link(Server, self())
+      {:ok, port} = Daemon.port(daemon)
+      {:ok, _client} = Client.start_link(self(), port)
 
       data = <<0::10240 * 8>>
       Process.sleep(100)
 
-      assert :ok = Server.push_data(server, data)
-      assert_receive {:push, ^data}
+      assert :ok = Server.push_data(receive do {:server, server} -> server end,
+        data)
+      assert_receive {:push, ^data}, 500
     end
   end
 end

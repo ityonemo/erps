@@ -10,8 +10,8 @@ defmodule ErpsTest.Callbacks.ServerLocalTest do
   defmodule Server do
     use Erps.Server
 
-    def start(test_pid) do
-      Erps.Server.start(__MODULE__, test_pid)
+    def start(test_pid, opts \\ []) do
+      Erps.Server.start(__MODULE__, test_pid, opts)
     end
 
     @impl true

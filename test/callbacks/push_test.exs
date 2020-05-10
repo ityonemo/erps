@@ -1,4 +1,4 @@
-defmodule ErpsTest.PushTest do
+defmodule ErpsTest.Callbacks.PushTest do
   use ExUnit.Case, async: true
   use ErpsTest.ClientCase
 
@@ -24,13 +24,12 @@ defmodule ErpsTest.PushTest do
     end
   end
 
-  test "servers respond when sent a push signal" do
-    {:ok, srv} = Server.start_link(nil)
-    {:ok, port} = Server.port(srv)
-
+  test "servers respond when sent a push signal", %{port: port} do
     Client.start_link(self(), port)
     Process.sleep(20)
-    Server.push(srv, :push)
+
+    Erps.Server.push(server(), :push)
+
     assert_receive :pushed
   end
 end
