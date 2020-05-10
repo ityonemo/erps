@@ -284,16 +284,7 @@ defmodule Erps.Client do
     attributes = module.__info__(:attributes)
     [base_packet] = attributes[:base_packet]
 
-    encode_options = attributes[:encode_opts] ++
-    case attributes[:sign_with] do
-      [nil] -> []
-      [fun] when is_atom(fun) ->
-        verify_signability!(module, fun, hmac_key)
-        [sign_with: &apply(module, fun, [&1, hmac_key])]
-      [{mod, fun}] ->
-        verify_signability!(mod, fun, hmac_key)
-        [sign_with: &apply(mod, fun, [&1, hmac_key])]
-    end
+    encode_options = attributes[:encode_opts]
 
     reconnect_option = case module.__info__(:attributes)[:reconnect] do
       [nil] -> []
@@ -304,14 +295,7 @@ defmodule Erps.Client do
      encode_opts: encode_options]
     ++ reconnect_option
   end
-
-  defp verify_signability!(module, function, hmac_key) do
-    function_exported?(module, function, 2) ||
-      raise "#{module}.#{function}/2 not exported; client signing impossible"
-    hmac_key ||
-      raise "hmac key not provided, client signing impossible."
-  end
-
+  
   #############################################################################
   ## API
 
