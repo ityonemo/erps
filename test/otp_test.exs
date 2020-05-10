@@ -180,4 +180,19 @@ defmodule ErpsTest.OtpTest do
     end
   end
 
+  @tag :one
+  test "supervising the daemon" do
+    {:ok, sup} = DynamicSupervisor.start_link(strategy: :one_for_one)
+    port = Enum.random(10000..20000)
+    children = [{Daemon, {Server, self(), port: port, server_supervisor: sup}}]
+    Supervisor.start_link(children, strategy: :one_for_one)
+
+    {:ok, _client} = Client.start_link(self(), port: port)
+
+    assert_receive {:server, server}
+    Process.sleep(20)
+    Erps.Server.push(server, :foo)
+    assert_receive(:foo)
+  end
+
 end

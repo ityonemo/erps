@@ -6,10 +6,8 @@ defmodule Erps.Client do
   The best way to think of an Erps client is that it is a GenServer that forwards
   its `call/2` and `cast/2` callbacks to a remote GenServer over a LAN or WAN.
   This callbacks would normally be provided by standard `GenServer.call/2` and
-  `GenServer.cast/2` semantics over erlang distribution but in some cases you may
-  want to issue a remote protocol request over high-latency or unreliable network
-  stretches, or in cases where you would like to have an OTP-supervised connection
-  orthogonal to standard erlang distribution semantics.
+  `GenServer.cast/2` semantics over erlang distribution but sometimes you just
+  don't want that (see `Erps`).
 
   ## Basic operation
 
@@ -40,19 +38,9 @@ defmodule Erps.Client do
   ## Module options
   - `:version` the version of your Erps API messages.  Should be a SemVer string.
     see `Version` for more information.
-  - `:identifier` a binary identifier for your Erps API endpoint.  Maximum 12
-    bytes, suggested to be human-readable.
-  - `:sign_with` defines the cryptographic signing function for your Erps
-    client/server pair.  May take one of two forms:
-    - `function` (where `function` is an atom) calls the signing function
-      `module.function/2` with the unsigned binary as the first parameter, and
-      the `hmac_key` (see `start_link/3` options) as the second parameter.
-      The `hmac_key` is passed to the function in the event that the client
-      has a KV store which should be queried to find the appropriate signing
-      key for the requested connection instance.  `module.function/2` should
-      emit a 32-byte signature in response.
-    - `{external_module, function}` calls `external_module.function/2` in the
-      same fashion as above.
+  - `:identifier` (optional) a binary identifier for your Erps API endpoint.
+    Maximum 36 bytes, suggested to be human-readable.  This must match the
+    identifier on the server in order for there to be a successful connection.
   - `:safe` (see `:erlang.binary_to_term/2`), for decoding terms.  If
     set to `false`, then allows undefined atoms and lambdas to be passed
     via the protocol.  This should be used with extreme caution, as
@@ -64,16 +52,10 @@ defmodule Erps.Client do
   defmodule MyClient do
     use Erps.Client, version: "0.2.4",
                      identifier: "my_api",
-                     sign_with: :signing,
                      safe: false
-
-    def signing(binary, hmac_key) do
-      :crypto.mac(:hmac, :sha256, SecretProvider.secret_for(hmac_key), binary)
-    end
 
     def start_link(iv) do
       Erps.Client.start_link(__MODULE__, init,
-        hmac_key: "ABCDEFGHIJKLMNOP",
         server: "my_api-server.example.com",
         port: 4747,
         transport: Transport.Tls,
@@ -159,7 +141,10 @@ defmodule Erps.Client do
     reply_ttl: 5000
   ]
 
+  # these two features are currently disabled, pending investigation
+  @typedoc false
   @type hmac_function :: (() -> String.t)
+  @typedoc false
   @type signing_function :: ((content :: binary, key :: binary) -> signature :: binary)
 
   @type reply_ref   :: %{from: GenServer.from, ttl: DateTime.t}
@@ -167,7 +152,7 @@ defmodule Erps.Client do
 
   @typep state :: %__MODULE__{
     module:         module,
-    socket:         nil | Erps.socket,
+    socket:         nil | Transport.socket,
     server:         :inet.ip_address,
     port:           :inet.port_number,
     data:           term,
@@ -211,17 +196,13 @@ defmodule Erps.Client do
   - `:port`         IP port of the target server (required)
   - `:transport`    module for communication transport strategy
   - `:keepalive`    time interval for sending a TCP/IP keepalive token.
-  - `:hmac_key`     one of two options:
-    - `function/0`  a zero-arity function which can be used to fetch the key at runtime
-    - `binary`      a directly instrumented value (this could be fetched at vm startup time
-      and pulled from `System.get_env/1` or `Application.get_env/2`)
   - `:tls_opts`     options for setting up a TLS connection.
     - `:cacertfile` path to the certificate of your signing authority. (required)
     - `:certfile`   path to the server certificate file. (required for `Transport.Tls`)
     - `:keyfile`    path to the signing key. (required for `Transport.Tls`)
     - `:customize_hostname_check` it's very likely that you might get tls failures if
-                    you are relying on the OTP builtin hostname checks.  This otp feature
-                    lets you override it for something custom.
+      you are relying on the OTP builtin hostname checks.  This OTP ssl feature
+      lets you override it for something custom.  See `:ssl.client_option/0`
   - `:reply_ttl`    the maximum amount of time that client should wait for `call`
     replies.  Units in ms, defaults to `5000`.
 
@@ -334,12 +315,13 @@ defmodule Erps.Client do
   #############################################################################
   ## API
 
-  @spec connected?(GenServer.server) :: boolean
+  @spec socket(GenServer.server) :: Transport.socket
   @doc """
-  returns `true` if the connection is active
-  """
-  def connected?(server), do: GenServer.call(server, :"$connected?")
+  returns the current socket in use by the server.
 
+  This may be a TCP socket or an SSL socket, or another interface
+  depending on what transport strategy you're using.
+  """
   def socket(server), do: GenServer.call(server, :"$socket")
 
   #############################################################################
@@ -357,9 +339,6 @@ defmodule Erps.Client do
 
   @impl true
   @spec handle_call(call :: term, GenServer.from, state) :: reply_response
-  def handle_call(:"$connected?", _, state) do
-    {:reply, not is_nil(state.socket), state}
-  end
   def handle_call(:"$socket", _, state) do
     {:reply, state.socket, state}
   end

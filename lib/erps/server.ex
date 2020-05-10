@@ -17,9 +17,9 @@ defmodule Erps.Server do
 
     @port <...>
 
-    def start_link, do: Erps.Server.start_link(__MODULE__, :ok,
-      port: @port,
-      tls_opts: [...])
+    def start_link(data, opts) do
+      Erps.Server.start_link(__MODULE__, data, opts)
+    end
 
     @impl true
     def init(init_state), do: {:ok, init_state}
@@ -30,9 +30,12 @@ defmodule Erps.Server do
   end
   ```
 
+  ** NB ** you *must* implement a `start_link/2` in order to be properly
+  launched by `Erps.Daemon`.
+
   Now you may either access these values as a normal, local
-  GenServer, or access them via `Erps.Client` (see documentation)
-  for the implementation.
+  `GenServer`, or access them via `Erps.Client`.  The `Erps.Server` module
+  will not know the difference between a local or a remote call.
 
   ```
   {:ok, server} = ErpsServer.start_link()
@@ -52,13 +55,10 @@ defmodule Erps.Server do
     set to `false`, then allows undefined atoms and lambdas to be passed
     via the protocol.  This should be used with extreme caution, as
     disabling safe mode can be an attack vector. (defaults to `true`)
-  - `:port` - sets the TCP/IP port that the server will listen to.  If
-    you don't set it or set it to `0` it will pick a random port, which
-    is useful for testing purposes.
   - `:transport` - set the transport module, which must implement
-    `Transport.Api` behaviour.  If you set it to `false`, the
-    Erps server will act similarly to a `GenServer` (with some
-    overhead).
+    `Transport` behaviour.  If you set it to `false`, the
+    Erps server will use `Erps.Transport.None` and act similarly to a
+    `GenServer` (with some overhead).
 
   ### Example
 
@@ -84,10 +84,8 @@ defmodule Erps.Server do
   so that you can call them in your code with clarity and less
   boilerplate:
 
-  - `port/1`
   - `push/2`
-  - `connections/1`
-  - `disconnect/2`
+  - `disconnect/1`
 
   """
 
@@ -177,47 +175,20 @@ defmodule Erps.Server do
 
   ### options
 
-  - `:port` tcp port that the server should listen to.  Use `0` to pick an unused
-    port and `port/1` to retrieve that port number (useful for testing).  You may
-    also set it to `false` if you want the server to act as a normal GenServer
-    (this is useful if you need a configuration-dependent behaviour)
   - `:transport` transport module (see `Transport.Api`)
   - `:tls_opts` options for TLS authorization and encryption.  Should include:
     - `:cacertfile` path to the certificate of your signing authority.
     - `:certfile`   path to the server certificate file.
     - `:keyfile`    path to the signing key.
-    - `:client_verify_fun` see below.
+    - `:customize_hostname_check` see below.
 
-  ### client_verify_fun
+  ### customize_hostname_check
 
   Erlang/OTP doesn't provide a simple mechanism for a server in a two way ssl
   connection to verify the identity of the client (which you may want in certain
   situations where you own both ends of the connection but not the intermediate
-  transport layer).  To handle this corner case, we provide the `client_verify_fun`
-  option, which expects a 2-arity lambda.  This lambda is passed the socket and
-  the raw certificate for examination, and expects `{:ok, socket}` if
-  it succeeds or `{:error, reason}` if it fails.
-
-  #### client_verify_fun Example
-
-  Here is an example of an arity-2 lambda that will check to see if the cert-
-  provided FQDN matches the fqdn in the @fqdn attribute
-
-  ```
-  @fqdn "my.domain.name"
-  @dns_name {2, 5, 29, 17}
-  def client_verify(socket, raw_cert) do
-    fqdn = String.to_charlist(@fqdn)
-
-    with {:ok, cert} <- X509.Certificate.from_der(raw_cert),
-         {:Extension, _, _, [dNSName: ^fqdn]} <-
-            X509.Certificate.extension(raw_cert, @dns_name) do
-      {:ok, socket}
-    else
-      _ -> {:error, "validation fail"}
-    end
-  end
-  ```
+  transport layer).  See `Transport.Tls.handshake/2` and
+  `:public_key.pkix_verify_hostname/3` for more details.
 
   see `GenServer.start_link/3` for a description of further options.
   """
@@ -482,6 +453,10 @@ defmodule Erps.Server do
   @typedoc """
   a `from` term that is either a local `from`, compatible with `t:GenServer.from/0`
   or an opaque term that represents a connected remote client.
+
+  This opaque term is completely compatible with the `t:GenServer.from` type.
+  In other words, you may pass this term to `Genserver.reply/2` from any process
+  and it will correctly route it to the caller whether it be local or remote.
   """
   @opaque from :: GenServer.from |
     {pid, {:"$remote_reply", Transport.Api.socket, non_neg_integer}}
@@ -605,17 +580,6 @@ defmodule Erps.Server do
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}
 
-  @doc """
-  used to filter messages from remote clients, allowing you to restrict your api.
-
-  The first term is either `:call` or `:cast`, indicating which type of api protocol
-  the filter applies to, followed by the term to be checked for filtering.  A `true`
-  response means allow, and a `false` response means drop.
-
-  Defaults to `fn _, _ -> true end` (which is permissive).
-  """
-  @callback filter(mode :: Packet.type, payload :: term) :: boolean
-
   @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2,
-    terminate: 2, filter: 2
+    terminate: 2
 end

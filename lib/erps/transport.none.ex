@@ -1,8 +1,8 @@
 defmodule Erps.Transport.None do
 
   @moduledoc """
-  implements no transport, which basically turns the Erps server into
-  a basic GenServer
+  implements no transport, which turns the Erps server into
+  a basic GenServer with some overhead.
   """
 
   @behaviour Transport
@@ -10,7 +10,7 @@ defmodule Erps.Transport.None do
   @impl true
   @doc false
   def listen(_port, _opts \\ []), do: {:ok, self()}
-  
+
   @impl true
   @doc false
   def accept(_sock, _timeout) do
