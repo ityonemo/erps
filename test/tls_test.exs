@@ -1,7 +1,7 @@
 defmodule ErpsTest.TlsTest do
   use ExUnit.Case, async: true
 
-  @moduletag :erps
+  @moduletag :tls
 
   alias Erps.Daemon
 
@@ -31,8 +31,8 @@ defmodule ErpsTest.TlsTest do
   defmodule Server do
     use Erps.Server
 
-    def start_link(test_pid) do
-      Erps.Server.start_link(__MODULE__, test_pid)
+    def start_link(test_pid, opts) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
     def init(test_pid) do
@@ -51,7 +51,6 @@ defmodule ErpsTest.TlsTest do
     end
   end
 
-  @tag :one
   test "an erps system can make a connection via TLS" do
     import ErpsTest.TlsOpts
 
@@ -61,4 +60,38 @@ defmodule ErpsTest.TlsTest do
     {:ok, client} = Client.start_link(port)
     assert :pong == Client.ping(client)
   end
+
+  defmodule Server2 do
+    use Erps.Server
+
+    import ErpsTest.TlsOpts
+
+    def start_link(test_pid, _opts) do
+      options = [transport: Transport.Tls] ++ tls_opts("server")
+      Erps.Server.start_link(__MODULE__, test_pid, options)
+    end
+
+    def init(test_pid) do
+      send(test_pid, {:server, self()})
+      {:ok, :waiting}
+    end
+
+    def state(srv), do: GenServer.call(srv, :state)
+
+    def handle_call(:ping, _from, state) do
+      {:reply, :pong, state}
+    end
+
+    def handle_cast(:cast, _state) do
+      {:noreply, :casted}
+    end
+  end
+
+  test "tls options should be settable at the server layer" do
+    {:ok, daemon} = Daemon.start_link(Server2, self())
+    {:ok, port} = Daemon.port(daemon)
+    {:ok, client} = Client.start_link(port)
+    assert :pong == Client.ping(client)
+  end
+
 end

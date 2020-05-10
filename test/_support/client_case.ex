@@ -14,8 +14,8 @@ defmodule ErpsTest.ClientCase do
       defmodule Server do
         use Erps.Server
 
-        def start_link(test_pid) do
-          Erps.Server.start_link(__MODULE__, test_pid, [])
+        def start_link(test_pid, opts) do
+          Erps.Server.start_link(__MODULE__, test_pid, opts)
         end
 
         def init(test_pid) do

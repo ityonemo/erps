@@ -21,8 +21,8 @@ defmodule ErpsTest.DualConnectionTest do
   defmodule Server do
     use Erps.Server
 
-    def start_link(state) do
-      Erps.Server.start_link(__MODULE__, state, [])
+    def start_link(state, opts) do
+      Erps.Server.start_link(__MODULE__, state, opts)
     end
 
     def init(state), do: {:ok, state}

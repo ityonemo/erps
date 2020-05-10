@@ -6,8 +6,8 @@ defmodule ErpsTest.Parameters.ServerTest do
   defmodule ServerVersion do
     use Erps.Server, versions: "~> 0.1.3"
 
-    def start_link(test_pid) do
-      Erps.Server.start_link(__MODULE__, test_pid)
+    def start_link(test_pid, opts) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
     def init(test_pid), do: {:ok, test_pid}
@@ -102,8 +102,8 @@ defmodule ErpsTest.Parameters.ServerTest do
   defmodule ServerIdentifier do
     use Erps.Server, identifier: "foobar"
 
-    def start_link(test_pid) do
-      Erps.Server.start_link(__MODULE__, test_pid)
+    def start_link(test_pid, opts) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
     def init(test_pid), do: {:ok, test_pid}
@@ -180,7 +180,7 @@ defmodule ErpsTest.Parameters.ServerTest do
   defmodule ServerSafe do
     use Erps.Server
 
-    def start_link(test_pid, opts \\ []) do
+    def start_link(test_pid, opts) do
       Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
@@ -198,8 +198,8 @@ defmodule ErpsTest.Parameters.ServerTest do
   defmodule ServerUnSafe do
     use Erps.Server, safe: false
 
-    def start_link(test_pid) do
-      Erps.Server.start_link(__MODULE__, test_pid)
+    def start_link(test_pid, opts) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
     def init(test_pid) do

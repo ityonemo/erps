@@ -10,11 +10,11 @@ defmodule ErpsTest.Callbacks.ServerInitTerminateTest do
 
     use Erps.Server
 
-    def start(test_pid) do
-      Erps.Server.start(__MODULE__, test_pid)
+    def start(test_pid, opts \\ []) do
+      Erps.Server.start(__MODULE__, test_pid, opts)
     end
-    def start_link(test_pid) do
-      Erps.Server.start_link(__MODULE__, test_pid)
+    def start_link(test_pid, opts \\ []) do
+      Erps.Server.start_link(__MODULE__, test_pid, opts)
     end
 
     @impl true

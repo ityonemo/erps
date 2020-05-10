@@ -229,8 +229,8 @@ defmodule Erps.Server do
 
   @impl true
   @doc false
-  def init({module, param, options}) do
-    param
+  def init({module, data, options}) do
+    data
     |> module.init
     |> process_init([module: module] ++
       options ++ module.__info__(:attributes))
@@ -247,19 +247,19 @@ defmodule Erps.Server do
   @doc false
   # PRIVATE API.  Informs the server that ownership of the socket has been
   # passed to it.
-  @spec allow(server) :: :ok
-  def allow(server), do: GenServer.call(server, :"$allow")
+  @spec allow(server, :inet.socket) :: :ok
+  def allow(server, child_sock), do: GenServer.call(server, {:"$allow", child_sock})
 
-  @spec allow_impl(GenServer.from, state) :: {:reply, :ok, state}
-  defp allow_impl(_from, state = %{socket: socket, transport: transport}) do
+  @spec allow_impl(:inet.socket, GenServer.from, state) :: {:reply, :ok, state}
+  defp allow_impl(tcp_socket, _from, state = %{transport: transport}) do
     # perform ssl handshake, upgrade to TLS.
     # next, wait for the subscription signal and set up the phoenix
     # pubsub subscriptions.
-    case transport.handshake(socket, tls_opts: state.tls_opts) do
-      {:ok, upgraded_socket} ->
+    case transport.handshake(tcp_socket, tls_opts: state.tls_opts) do
+      {:ok, socket} ->
         recv_loop()
         {:reply, :ok,
-          %{state | socket: upgraded_socket, tcp_socket: socket}}
+          %{state | socket: socket, tcp_socket: tcp_socket}}
       error = {:error, msg} -> {:stop, msg, error, state}
       error -> {:stop, :error, error, state}
     end
@@ -372,7 +372,9 @@ defmodule Erps.Server do
 
   @impl true
   @spec handle_call(call :: term, from, state) :: reply_response
-  def handle_call(:"$allow", from, state), do: allow_impl(from, state)
+  def handle_call({:"$allow", tcp_socket}, from, state) do
+    allow_impl(tcp_socket, from, state)
+  end
   def handle_call({:"$push", push}, _from, state) do
     push_impl(push, state)
   end

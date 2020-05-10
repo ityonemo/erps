@@ -115,24 +115,21 @@ defmodule Erps.Daemon do
   #############################################################################
   ## Server spawning
 
-  defp to_server(state, child_sock) do
+  defp to_server(state) do
     server_opts = state
     |> Map.from_struct()
     |> Map.take([:tls_opts, :transport])
-    |> Map.put(:socket, child_sock)
     |> Enum.map(&(&1))
 
     {state.initial_data, server_opts}
   end
 
   defp do_start_server(
-      state = %{server_supervisor: nil, server_module: server},
-      child_sock) do
-
+      state = %{server_supervisor: nil, server_module: server}) do
     # unsupervised case.  Not recommended, except for testing purposes.
-    {data, server_opts} = to_server(state, child_sock)
-
-    Erps.Server.start_link(server, data, server_opts)
+    {data, server_opts} = to_server(state)
+    # requires start_link/2
+    server.start_link(data, server_opts)
   end
   #defp do_start_server(
   #    state = %{server_supervisor: {supervisor, name}, server_module: server}, child_sock) do
@@ -141,9 +138,9 @@ defmodule Erps.Daemon do
   #    {server, to_server(state, child_sock)})
   #end
   defp do_start_server(
-      state = %{server_supervisor: sup, server_module: server}, child_sock) do
+      state = %{server_supervisor: sup, server_module: server}) do
     # default, DynamicSupervisor case
-    DynamicSupervisor.start_child(sup, {server, to_server(state, child_sock)})
+    DynamicSupervisor.start_child(sup, {server, to_server(state)})
   end
 
   #############################################################################
@@ -151,11 +148,11 @@ defmodule Erps.Daemon do
 
   def handle_info(:accept, state = %{transport: transport}) do
     with {:ok, child_sock} <- transport.accept(state.socket, state.timeout),
-         {:ok, srv_pid} <- do_start_server(state, child_sock) do
+         {:ok, srv_pid} <- do_start_server(state) do
       # transfer ownership to the child server.
       :gen_tcp.controlling_process(child_sock, srv_pid)
       # signal to the child server that the ownership has been transferred.
-      Erps.Server.allow(srv_pid)
+      Erps.Server.allow(srv_pid, child_sock)
     else
       {:error, :timeout} ->
         # this is normal.  Just quit out and enter the accept loop.
