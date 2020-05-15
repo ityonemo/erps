@@ -73,6 +73,8 @@ defmodule Erps.Client do
     across the network from different processes and they will be routed
     correctly and will only interfere with each other in terms of the
     connection arbitration overhead.
+  - Calls reply immediately with the atom `:disconnected` if the erps client
+    is not currently connected to its server.
   - `handle_continue/2` is currently not supported.  This is a limitation
     in the `Connection` library.
   """
@@ -350,8 +352,8 @@ defmodule Erps.Client do
   def handle_call(:"$disconnect", _, state) do
     {:disconnect, :later, :ok, state}
   end
-  def handle_call(_, _, %{socket: nil}) do
-    raise "call attempted when the client is not connected"
+  def handle_call(_, _, state = %{socket: nil}) do
+    {:reply, :disconnected, state}
   end
   def handle_call(call, from, state = %{transport: transport}) do
     ref = :erlang.phash2(from)
