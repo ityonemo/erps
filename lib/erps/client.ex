@@ -226,6 +226,8 @@ defmodule Erps.Client do
       lets you override it for something custom.  See `:ssl.client_option/0`
   - `:reply_ttl`    the maximum amount of time that client should wait for `call`
     replies.  Units in ms, defaults to `5000`.
+  - `forward_callers: true` causes the client to adopt the universe of the caller.
+    see `Multiverses` for details
 
   see `GenServer.start_link/3` for a description of further options.
   """
@@ -512,7 +514,7 @@ defmodule Erps.Client do
         {:noreply, %{state | data: data}}
       {:noreply, data, timeout} when is_integer(timeout)->
         {:noreply, %{state | data: data}, timeout}
-      {:noreply, data, {:continue, _}} ->
+      {:noreply, _data, {:continue, _}} ->
         raise ArgumentError, message: "continuations are not currently supported"
       {:stop, reason, new_state} ->
         {:stop, reason, %{state | data: new_state}}

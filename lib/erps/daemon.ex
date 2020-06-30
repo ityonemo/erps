@@ -113,6 +113,8 @@ defmodule Erps.Daemon do
   - `server_supervisor: {module, name}` allows you to use a generic module for supervision
     and calls `module.start_child/2` with the server module and the arity-2 parameters for
     the `server_module.start_link/2` function.
+  - `forward_callers: true` causes the daemon and its spawned servers to adopt the universe
+    of the caller.  see `Multiverses` for details
 
   other options you may want to override:
 

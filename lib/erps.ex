@@ -37,14 +37,27 @@ defmodule Erps do
 
   ## Security model
 
-  Erps currently presumes that once authenticated, both ends of the Erps
-  connection are trusted, and provides only basic security measures to
-  protect the server and the client.
+  Erps currently presumes that once authenticated via TLS, both ends of the Erps
+  connection are trusted, and provides only basic security measures to protect
+  the server and the client.
 
   ## Distribution and Worker pools
 
   There are no provisions for supporting out-of-the-box 'smart' distribution
   defaults or smart worker pool defaults, but this is planned.
+
+  ## Multiverses
+
+  Erps supports `Multiverses` out of the box.  To activate multiverses at compile-
+  time, you will probably want to have the following in your `test.exs`:
+
+  ```
+  config :erps, use_multiverses: true
+  ```
+
+  In order to use multiverses with any given Daemon or Client, you must also pass
+  `forward_callers: true` in the options of the `start/2` or `start_link/2`
+  functions.
 
   ## Examples
 
