@@ -29,7 +29,7 @@ defmodule Erps.MixProject do
     {:dialyxir, "~> 0.5.1", only: :dev, runtime: false},
     {:ex_doc, "~> 0.20.2", only: :dev, runtime: false},
     {:excoveralls, "~> 0.11.1", only: :test},
-    {:multiverses, path: "../multiverses"},#"~> 0.5.0", runtime: false},
+    {:multiverses, "~> 0.5.0", runtime: false},
 
     # abstracts services which are connections
     {:connection, "~> 1.0"},
