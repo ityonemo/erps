@@ -93,6 +93,7 @@ defmodule Erps.Client do
   @default_reconnect 60_000
 
   alias Erps.Packet
+  require Multiverses
 
   defmacro __using__(opts) do
     version = if opts[:version] do
@@ -192,8 +193,15 @@ defmodule Erps.Client do
   see `start_link/3` for a description of avaliable options.
   """
   def start(module, state, opts) do
-    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    Connection.start(__MODULE__, {module, state, inner_opts}, gen_server_opts)
+    {gen_server_opts, inner_opts!} = Keyword.split(opts, @gen_server_opts)
+
+    inner_opts! = if opts[:forward_callers] do
+      Keyword.merge(inner_opts!, universe: Multiverses.link())
+    else
+      inner_opts!
+    end
+
+    Connection.start(__MODULE__, {module, state, inner_opts!}, gen_server_opts)
   end
 
   @doc """
@@ -221,9 +229,9 @@ defmodule Erps.Client do
 
   see `GenServer.start_link/3` for a description of further options.
   """
-  def start_link(module, state, opts) do
-    {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    Connection.start_link(__MODULE__, {module, state, inner_opts}, gen_server_opts)
+  def start_link(module, state, options!) do
+    options! = put_in(options!, [:spawn_opt], [:link | Keyword.get(options!, :spawn_opt, [])])
+    start(module, state, options!)
   end
 
   @default_options [
@@ -233,6 +241,10 @@ defmodule Erps.Client do
 
   @impl true
   def init({module, data, opts}) do
+    if opts[:forward_callers] do
+      Multiverses.port(opts[:universe])
+    end
+
     instance_options = get_instance_options(opts)
 
     module_options = get_module_options(module)

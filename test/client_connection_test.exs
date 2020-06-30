@@ -23,18 +23,12 @@ defmodule ErpsTest.ClientConnectionTest do
   end
 
   describe "when a client connects and fails to find a server" do
-    test "calls result in throws" do
+
+    test "calls result in disconnected atom" do
       port = Enum.random(10_000..30_000)
       {:ok, client} = Client.start(port)
 
-      error = try do
-        GenServer.call(client, :foo, 300)
-      catch
-        :exit, err ->
-          err
-      end
-
-      assert {{%RuntimeError{}, _}, _} = error
+      assert :disconnected == GenServer.call(client, :foo, 300)
     end
 
     test "casts don't fault" do

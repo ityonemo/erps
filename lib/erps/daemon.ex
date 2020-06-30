@@ -1,6 +1,4 @@
 defmodule Erps.Daemon do
-  use GenServer
-
   @moduledoc """
   A Process which sits on a TCP port and listens to inbound connections, handing
   them off to `Erps.Server` modules when an connection arrives.
@@ -30,6 +28,9 @@ defmodule Erps.Daemon do
   You may override the standard child_spec parameters `[:id, :restart, :shutdown]` in the options list of the tuple.
   """
 
+  use Multiverses, with: [GenServer, DynamicSupervisor]
+  use GenServer
+
   require Logger
 
   # defaults the transport to TLS for library users. For internal library
@@ -51,6 +52,7 @@ defmodule Erps.Daemon do
     transport:         @default_transport,
     server_supervisor: nil,
     tls_opts:          [],
+    server_options:    [],
   ]
 
   @type socket :: :inet.socket | :ssl.socket
@@ -67,8 +69,8 @@ defmodule Erps.Daemon do
     tls_opts: [
       cacertfile:      Path.t,
       certfile:        Path.t,
-      keyfile:         Path.t
-    ]
+      keyfile:         Path.t],
+    server_options:    keyword,
   }
 
   def child_spec({server_module, data, options}) do
@@ -79,15 +81,21 @@ defmodule Erps.Daemon do
     Supervisor.child_spec(default, Keyword.take(options, [:id, :restart, :shutdown]))
   end
 
-  @gen_server_opts [:debug, :timeout, :hibernate_after, :spawn_opt, :name]
+  @gen_server_opts [:debug, :timeout, :hibernate_after, :spawn_opt, :name, :forward_callers]
 
   @spec start(module, term, keyword) :: GenServer.on_start
   @doc "see `start_link/2`"
   def start(server_module, data, options \\ []) do
     # partition into gen_server options and daemon options
-    {gen_server_options, daemon_options} = options
-    |> Keyword.merge(server_module: server_module, initial_data: data)
-    |> Keyword.split(@gen_server_opts)
+    gen_server_options = Keyword.take(options, @gen_server_opts)
+
+    server_options = options
+    |> Keyword.get(:server_options, [])
+    |> Keyword.merge(forward_callers: options[:forward_callers])
+
+    daemon_options = options
+    |> Keyword.drop(@gen_server_opts)
+    |> Keyword.merge(server_module: server_module, initial_data: data, server_options: server_options)
 
     GenServer.start(__MODULE__, daemon_options, gen_server_options)
   end
@@ -114,7 +122,7 @@ defmodule Erps.Daemon do
   - `:tls_opts`, useful for specifiying TLS parameters shared by all server processes
   """
   def start_link(server_module, data, options! \\ []) do
-    options! = put_in(options!, [:spawn_opt], [:link | (options![:spawn_opt] || [])])
+    options! = put_in(options!, [:spawn_opt], [:link | Keyword.get(options!, :spawn_opt, [])])
     start(server_module, data, options!)
   end
 
@@ -127,7 +135,8 @@ defmodule Erps.Daemon do
 
   @doc false
   def init(opts) do
-    state = struct(__MODULE__, opts)
+    saved_options = Keyword.drop(opts, Map.keys(__struct__()))
+    state = struct(__MODULE__, opts ++ [options: saved_options])
     listen_opts = @default_listen_opts
     |> Keyword.merge(opts)
     |> Keyword.take(@tcp_listen_opts)
@@ -179,6 +188,7 @@ defmodule Erps.Daemon do
     |> Map.from_struct()
     |> Map.take([:tls_opts, :transport])
     |> Enum.map(&(&1))
+    |> Keyword.merge(state.server_options)
 
     {state.initial_data, server_opts}
   end
@@ -206,9 +216,9 @@ defmodule Erps.Daemon do
 
   def handle_info(:accept, state = %{transport: transport}) do
     with {:ok, child_sock} <- transport.accept(state.socket, state.timeout),
-         {:ok, srv_pid} <- do_start_server(state) do
-      # transfer ownership to the child server.
-      :gen_tcp.controlling_process(child_sock, srv_pid)
+         {:ok, srv_pid} <- do_start_server(state),
+         # transfer ownership to the child server.
+         :ok <- :gen_tcp.controlling_process(child_sock, srv_pid) do
       # signal to the child server that the ownership has been transferred.
       Erps.Server.allow(srv_pid, child_sock)
     else

@@ -34,7 +34,7 @@ defmodule ErpsTest.ClientCase do
 
   setup context do
     server_module = Module.concat(context.module, "Server")
-    {:ok, daemon} = Daemon.start_link(server_module, self())
+    {:ok, daemon} = Daemon.start_link(server_module, self(), forward_callers: true)
     {:ok, port} = Daemon.port(daemon)
     {:ok, port: port}
   end

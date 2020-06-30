@@ -68,6 +68,11 @@
 - use of `Transport` library for TCP/TLS commonalities
 - use of `Connection` library to sanely manage the client
 
+## 0.5.1
+
+- implementation of `Multiverse` testing strategy.
+- added `:forward_callers` option to client and server.
+
 ## Planned features:
 
 - reactivation of HMAC signing with better crypto tests

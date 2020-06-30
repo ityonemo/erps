@@ -24,10 +24,12 @@ defmodule Erps.MixProject do
   end
 
   defp deps, do: [
+    # static analysis and testing tools
     {:credo, "~> 1.2", only: [:test, :dev], runtime: false},
     {:dialyxir, "~> 0.5.1", only: :dev, runtime: false},
     {:ex_doc, "~> 0.20.2", only: :dev, runtime: false},
     {:excoveralls, "~> 0.11.1", only: :test},
+    {:multiverses, path: "../multiverses"},#"~> 0.5.0", runtime: false},
 
     # abstracts services which are connections
     {:connection, "~> 1.0"},
@@ -36,7 +38,7 @@ defmodule Erps.MixProject do
 
     # for making testing TLS easier.
     {:x509, "~> 0.8.0", only: [:dev, :test]},
-    {:plug_crypto, "~> 1.1.2"}
+    {:plug_crypto, "~> 1.1.2"},
   ]
 
   defp elixirc_paths(:test), do: ["lib", "test/_support"]
