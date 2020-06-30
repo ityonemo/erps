@@ -68,7 +68,7 @@
 - use of `Transport` library for TCP/TLS commonalities
 - use of `Connection` library to sanely manage the client
 
-## 0.5.1
+## 0.5.2
 
 - implementation of `Multiverse` testing strategy.
 - added `:forward_callers` option to client and server.
