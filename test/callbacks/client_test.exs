@@ -8,7 +8,7 @@ defmodule ErpsTest.Callbacks.ClientTest do
 
     use Erps.Client
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start(port, test_pid) do
       Erps.Client.start(__MODULE__,

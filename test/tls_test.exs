@@ -10,7 +10,7 @@ defmodule ErpsTest.TlsTest do
 
     import ErpsTest.TlsOpts
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port) do
       Erps.Client.start_link(__MODULE__, :ok,

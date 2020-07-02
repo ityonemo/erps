@@ -10,7 +10,7 @@ defmodule ErpsTest.ClientConnectionTest do
   defmodule Client do
     use Erps.Client, reconnect: 100
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start(port) do
       Erps.Client.start(__MODULE__, self(), server: @localhost, port: port)

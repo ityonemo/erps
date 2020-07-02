@@ -29,7 +29,7 @@ defmodule ErpsTest.MultiverseTest do
 
     require Multiverses
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(test_pid, port) do
       Erps.Client.start_link(__MODULE__, test_pid, server: @localhost, port: port, forward_callers: true)

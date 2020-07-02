@@ -29,7 +29,7 @@ defmodule ErpsTest.Parameters.ClientTest do
   defmodule ClientVersion do
     use Erps.Client, version: "0.1.3"
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port) do
       Erps.Client.start_link(__MODULE__, port,
@@ -74,7 +74,7 @@ defmodule ErpsTest.Parameters.ClientTest do
   defmodule ClientIdentifier do
     use Erps.Client, identifier: "erpstest"
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port) do
       Erps.Client.start_link(__MODULE__, port,
@@ -112,7 +112,7 @@ defmodule ErpsTest.Parameters.ClientTest do
   defmodule ClientCompressionLow do
     use Erps.Client, compressed: 1
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port) do
       Erps.Client.start_link(__MODULE__, port,
@@ -126,7 +126,7 @@ defmodule ErpsTest.Parameters.ClientTest do
   defmodule ClientCompressionHigh do
     use Erps.Client, compressed: 9
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port) do
       Erps.Client.start_link(__MODULE__, port,
@@ -140,7 +140,7 @@ defmodule ErpsTest.Parameters.ClientTest do
   defmodule ClientCompressionDefault do
     use Erps.Client, compressed: true
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port) do
       Erps.Client.start_link(__MODULE__, port,
@@ -185,7 +185,7 @@ defmodule ErpsTest.Parameters.ClientTest do
 
     use Erps.Client
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port) do
       Erps.Client.start_link(__MODULE__, port,

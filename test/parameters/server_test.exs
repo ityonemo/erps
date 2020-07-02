@@ -21,7 +21,7 @@ defmodule ErpsTest.Parameters.ServerTest do
   alias Erps.Daemon
   alias Erps.Packet
 
-  @localhost {127, 0, 0, 1}
+  @localhost IP.localhost()
   describe "when the server is versioned" do
     test "a properly versioned packet gets accepted" do
       {:ok, daemon} = Daemon.start_link(ServerVersion, self())

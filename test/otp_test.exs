@@ -9,7 +9,7 @@ defmodule ErpsTest.OtpTest do
   defmodule Client do
     use Erps.Client
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start(test_pid, opts) do
       Erps.Client.start(__MODULE__, test_pid, [server: @localhost] ++ opts)

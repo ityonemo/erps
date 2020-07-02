@@ -5,7 +5,7 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
   defmodule Client do
     use Erps.Client
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(port, async_pid) do
       Erps.Client.start_link(__MODULE__,

@@ -39,6 +39,9 @@ defmodule Erps.MixProject do
     # for making testing TLS easier.
     {:x509, "~> 0.8.0", only: [:dev, :test]},
     {:plug_crypto, "~> 1.1.2"},
+
+    # for simplifying tests
+    {:net_address, "~> 0.2.1", only: :test}
   ]
 
   defp elixirc_paths(:test), do: ["lib", "test/_support"]

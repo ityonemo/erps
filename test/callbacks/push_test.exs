@@ -8,7 +8,7 @@ defmodule ErpsTest.Callbacks.PushTest do
   defmodule Client do
     use Erps.Client
 
-    @localhost {127, 0, 0, 1}
+    @localhost IP.localhost()
 
     def start_link(test_pid, port) do
       Erps.Client.start_link(

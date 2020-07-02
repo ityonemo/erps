@@ -14,7 +14,7 @@ defmodule ErpsTest.ServerCase do
       defmodule Client do
         use Erps.Client
 
-        @localhost {127, 0, 0, 1}
+        @localhost IP.localhost()
 
         def start(test_pid, port) do
           Erps.Client.start(__MODULE__, test_pid, server: @localhost, port: port, forward_callers: true)
