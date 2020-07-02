@@ -297,12 +297,20 @@ defmodule Erps.Client do
       # start up the repetitive loops
       keepalive_loop(state)
       recv_loop()
-      {:ok, %{state | tcp_socket: socket, socket: upgraded}}
+      connect_impl(%{state | tcp_socket: socket, socket: upgraded})
     else
       {:error, :econnrefused} ->
         {:backoff, state.reconnect, state}
       {:error, msg} ->
         {:stop, msg, state}
+    end
+  end
+
+  defp connect_impl(state = %{module: module}) do
+    if function_exported?(module, :handle_connect, 2) do
+      module.handle_connect(state.socket, state.data)
+    else
+      {:ok, state}
     end
   end
 
@@ -313,7 +321,7 @@ defmodule Erps.Client do
   end
 
   #############################################################################
-  ## API
+  ## `Connection API`
 
   @spec socket(GenServer.server) :: Transport.socket
   @doc """
@@ -345,15 +353,16 @@ defmodule Erps.Client do
   #############################################################################
   ## ROUTER
 
-  @typep noreply_response ::
+  @typep noreply ::
   {:noreply, state}
-  | {:noreply, state, timeout | :hibernate | {:continue, term}}
+  | {:noreply, state, timeout | :hibernate}
   | {:stop, reason :: term, state}
 
   @typep reply_response ::
   {:reply, reply :: term, state}
-  | {:reply, reply :: term, state, timeout | :hibernate | {:continue, term}}
-  | noreply_response
+  | {:reply, reply :: term, state, timeout | :hibernate}
+  | {:disconnect | :connect, any, reply :: term, state}
+  | noreply
 
   @impl true
   @spec handle_call(call :: term, GenServer.from, state) :: reply_response
@@ -404,7 +413,7 @@ defmodule Erps.Client do
   end
 
   @impl true
-  @spec handle_cast(cast :: term, state) :: noreply_response
+  @spec handle_cast(cast :: term, state) :: noreply
   def handle_cast(_, state = %{socket: nil}), do: {:noreply, state}
   def handle_cast(cast, state = %{transport: transport}) do
     #instrument data into the packet and convert to binary.
@@ -419,7 +428,7 @@ defmodule Erps.Client do
   @closed [:tcp_closed, :ssl_closed, :closed, :enotconn]
 
   @impl true
-  @spec handle_info(info :: term, state) :: noreply_response
+  @spec handle_info(info :: term, state) :: noreply
   def handle_info(:recv, state = %{transport: transport, socket: socket}) do
     recv_loop()
     case Packet.get_data(transport, socket, state.decode_opts)  do
@@ -456,7 +465,7 @@ defmodule Erps.Client do
     |> process_noreply(state)
   end
 
-  @spec push_impl(push :: term, state) :: noreply_response
+  @spec push_impl(push :: term, state) :: noreply
   defp push_impl(push, state = %{module: module}) do
     if function_exported?(module, :handle_push, 2) do
       push
@@ -528,6 +537,12 @@ defmodule Erps.Client do
   #############################################################################
   ## API Definition
 
+  @type noreply_response ::
+    {:noreply, term}
+    | {:noreply, term, timeout | :hibernate}
+    | {:disconnect, any, term}
+    | {:stop, reason :: term, term}
+
   @doc """
   Invoked to set up the process.
 
@@ -541,9 +556,6 @@ defmodule Erps.Client do
     `c:handle_info/2` *if no other messages come by*.
   - `{:ok, state, :hibernate}` successful startup, followed by a hibernation
     event (see `:erlang.hibernate/3`)
-  - `{:ok, state, {:continue, term}}` successful startup, and causes a
-    continuation to be triggered after the message is handled, sent to
-    `c:handle_continue/3`
   - `:ignore` - Drop the gen_server creation request, because for some reason
     it shouldn't have started.
   - `{:stop, reason}` - a failure in creating the gen_server.  Results in
@@ -551,10 +563,18 @@ defmodule Erps.Client do
   """
   @callback init(init_arg :: term()) ::
     {:ok, state}
-    | {:ok, state, timeout() | :hibernate | {:continue, term()}}
+    | {:ok, state, timeout | :hibernate}
     | :ignore
-    | {:stop, reason :: any()}
+    | {:stop, reason :: any}
     when state: term
+
+  @doc """
+  called when a connection has been successfully completed.
+
+  ### Return codes
+  see return codes for `c:handle_push/2`
+  """
+  @callback handle_connect(socket :: Transport.socket, state :: term) :: noreply_response
 
   @doc """
   Invoked to handle `Erps.Server.push/2` messages.
@@ -563,13 +583,16 @@ defmodule Erps.Client do
   current state of the `Erps.Client`.
 
   ### Return codes
-  see return codes for `c:handle_continue/2`
+  - `{:noreply, new_state}` continues the loop with new state `new_state`
+  - `{:noreply, new_state, timeout}` causes a :timeout message to be sent to
+    `c:handle_info/2` *if no other message comes by*
+  - `{:noreply, new_state, :hibernate}`, causes a hibernation event (see
+    `:erlang.hibernate/3`)
+  - `{:disconnect, reason, new_state}`, causes a disocnnection.
+  - `{:stop, reason, new_state}` terminates the loop, passing `new_state`
+    to `c:terminate/2`, if it's implemented.
   """
-  @callback handle_push(push :: term, state :: term) ::
-    {:noreply, new_state}
-    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
-    | {:stop, reason :: term, new_state}
-  when new_state: term
+  @callback handle_push(push :: term, state :: term) :: noreply_response
 
   @doc """
   Invoked to handle general messages sent to the client process.
@@ -581,13 +604,9 @@ defmodule Erps.Client do
   see: `c:GenServer.handle_info/2`.
 
   ### Return codes
-  see return codes for `c:handle_continue/2`
+  see return codes for `c:handle_push/2`/2`
   """
-  @callback handle_info(msg :: :timeout | term(), state :: term()) ::
-    {:noreply, new_state}
-    | {:noreply, new_state, timeout() | :hibernate | {:continue, term()}}
-    | {:stop, reason :: term(), new_state}
-    when new_state: term()
+  @callback handle_info(msg :: :timeout | term, state :: term) :: noreply_response
 
   @doc """
   Invoked when the client is about to exit.
@@ -599,5 +618,5 @@ defmodule Erps.Client do
   @callback terminate(reason, state :: term) :: term
   when reason: :normal | :shutdown | {:shutdown, term}
 
-  @optional_callbacks handle_info: 2, handle_push: 2, terminate: 2
+  @optional_callbacks handle_info: 2, handle_push: 2, handle_connect: 2, terminate: 2
 end

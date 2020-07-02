@@ -1,7 +1,7 @@
 require Logger
 
 tempdir_name = Base.encode16(:crypto.strong_rand_bytes(32))
-tempdir = Path.join([System.tmp_dir!(), ".pony-express-test", tempdir_name])
+tempdir = Path.join([System.tmp_dir!(), ".erps-test", tempdir_name])
 
 defmodule ErpsTest.TlsFiles do
   @path tempdir

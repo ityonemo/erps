@@ -34,7 +34,6 @@ defmodule ErpsTest.Callbacks.ClientInitTest do
     end)
   end
 
-
   describe "the init/1 function" do
     test "can return {:ok, state}", %{port: port} do
       # set up an async which springloads an initialization response

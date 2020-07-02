@@ -8,7 +8,7 @@ defmodule ErpsTest.IsRemoteTest do
     use GenServer
     def start_link, do: GenServer.start_link(__MODULE__, nil)
     def init(nil), do: {:ok, nil}
-    def handle_call(_, from, test_pid), do: {:reply, from, nil}
+    def handle_call(_, from, nil), do: {:reply, from, nil}
   end
 
   test "a normal GenServer's from resolves as false in is_remote/1" do
@@ -66,7 +66,7 @@ defmodule ErpsTest.IsRemoteTest do
       send(test_pid, :remote)
       {:reply, :ok, test_pid}
     end
-    def handle_call(_, from, test_pid) do
+    def handle_call(_, _from, test_pid) do
       send(test_pid, :local)
       {:reply, :ok, test_pid}
     end
