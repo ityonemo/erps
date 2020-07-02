@@ -81,7 +81,7 @@ defmodule Erps.Daemon do
     Supervisor.child_spec(default, Keyword.take(options, [:id, :restart, :shutdown]))
   end
 
-  @forward_callers if Application.compile_env(:erps, :use_multiverses), do: [:forward_callers], else: []
+  @forward_callers if Multiverses.active?(), do: [:forward_callers], else: []
   @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after] ++ @forward_callers
 
   @spec start(module, term, keyword) :: GenServer.on_start

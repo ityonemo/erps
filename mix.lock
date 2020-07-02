@@ -16,7 +16,7 @@
   "makeup_elixir": {:hex, :makeup_elixir, "0.14.1", "4f0e96847c63c17841d42c08107405a005a2680eb9c7ccadfd757bd31dabccfb", [:mix], [{:makeup, "~> 1.0", [hex: :makeup, repo: "hexpm", optional: false]}], "hexpm", "f2438b1a80eaec9ede832b5c41cd4f373b38fd7aa33e3b22d9db79e640cbde11"},
   "metrics": {:hex, :metrics, "1.0.1", "25f094dea2cda98213cecc3aeff09e940299d950904393b2a29d191c346a8486", [:rebar3], [], "hexpm", "69b09adddc4f74a40716ae54d140f93beb0fb8978d8636eaded0c31b6f099f16"},
   "mimerl": {:hex, :mimerl, "1.2.0", "67e2d3f571088d5cfd3e550c383094b47159f3eee8ffa08e64106cdf5e981be3", [:rebar3], [], "hexpm", "f278585650aa581986264638ebf698f8bb19df297f66ad91b18910dfc6e19323"},
-  "multiverses": {:hex, :multiverses, "0.5.2", "6d6ce92e112d305f30a3fa813e02a832979d25f7e7e948c4ce02321706828b2f", [:mix], [], "hexpm", "901908904412b402eca3bc4061613bbc1019f97bd3da6166d53d07d8e42ecda9"},
+  "multiverses": {:hex, :multiverses, "0.5.3", "f49eb66bcccb426d3bf293169d79667a4c297ec541f6318091629d0566bc8727", [:mix], [], "hexpm", "d9f4a9d4ebc70cd4a700caa4f093f88814988ff368e22604a7c6d39c003e4239"},
   "net_address": {:hex, :net_address, "0.2.1", "0868ee0c45fad819d0bd50b6c2e3ce12418025482d181cea158a66bf05855bf6", [:mix], [], "hexpm", "6cf4dc62893c961f69823d13f4aa31665f6dd874dc7dfe9a25d3776f084c264b"},
   "nimble_parsec": {:hex, :nimble_parsec, "0.6.0", "32111b3bf39137144abd7ba1cce0914533b2d16ef35e8abc5ec8be6122944263", [:mix], [], "hexpm", "27eac315a94909d4dc68bc07a4a83e06c8379237c5ea528a9acff4ca1c873c52"},
   "parse_trans": {:hex, :parse_trans, "3.3.0", "09765507a3c7590a784615cfd421d101aec25098d50b89d7aa1d66646bc571c1", [:rebar3], [], "hexpm", "17ef63abde837ad30680ea7f857dd9e7ced9476cdd7b0394432af4bfc241b960"},
