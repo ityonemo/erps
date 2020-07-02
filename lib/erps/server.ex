@@ -158,7 +158,8 @@ defmodule Erps.Server do
 
   alias Erps.Packet
 
-  @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after, :forward_callers]
+  @forward_callers if Application.compile_env(:erps, :use_multiverses), do: [:forward_callers], else: []
+  @gen_server_opts [:name, :timeout, :debug, :spawn_opt, :hibernate_after] ++ @forward_callers
 
   @doc """
   starts a server GenServer, not linked to the caller. Most useful for tests.
@@ -168,7 +169,6 @@ defmodule Erps.Server do
   @spec start(module, term, keyword) :: GenServer.on_start
   def start(module, param, opts \\ []) do
     {gen_server_opts, inner_opts} = Keyword.split(opts, @gen_server_opts)
-    Process.get(:"$callers")
     GenServer.start(__MODULE__, {module, param, inner_opts}, gen_server_opts)
   end
 
