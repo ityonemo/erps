@@ -67,4 +67,14 @@ defmodule Erps do
   connections which are individually managed by servers;  A Server cannot listen
   on a port for an inbound connection by itself.
   """
+
+  @doc """
+  Tests to see if a `t:GenServer.from` tuple being passed into an Erps.Server
+  is from a remote client
+
+  usable in guards.
+  """
+  defguard is_remote(from) when is_tuple(elem(from, 1)) and
+    elem(elem(from, 1), 0) == :"$remote_reply"
+
 end

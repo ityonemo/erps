@@ -73,6 +73,11 @@
 - implementation of `Multiverse` testing strategy.
 - added `:forward_callers` option to client and server.
 
+## 0.5.3
+
+- implementation of `Erps.is_remote` guard
+- implementation of `Erps.Client.handle_connect` callback
+
 ## Planned features:
 
 - reactivation of HMAC signing with better crypto tests
