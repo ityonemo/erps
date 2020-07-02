@@ -56,7 +56,8 @@ defmodule Erps do
   ```
 
   In order to use multiverses with any given Daemon or Client, you must also pass
-  `forward_callers: true` in the options of the `start/2` or `start_link/2`
+  `forward_callers: true` in the options of the `Erps.Daemon.start/3`,
+  `Erps.Daemon.start_link/3`, `Erps.Client.start/3`, `Erps.Client.start_link/3`
   functions.
 
   ## Examples
@@ -69,7 +70,7 @@ defmodule Erps do
   """
 
   @doc """
-  Tests to see if a `t:GenServer.from` tuple being passed into an Erps.Server
+  Tests to see if a `t:GenServer.from/0` tuple being passed into an Erps.Server
   is from a remote client
 
   usable in guards.

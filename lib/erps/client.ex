@@ -569,7 +569,7 @@ defmodule Erps.Client do
     when state: term
 
   @doc """
-  called when a connection has been successfully completed.
+  called when a connection has been successfully established.
 
   ### Return codes
   see return codes for `c:handle_push/2`
@@ -588,7 +588,7 @@ defmodule Erps.Client do
     `c:handle_info/2` *if no other message comes by*
   - `{:noreply, new_state, :hibernate}`, causes a hibernation event (see
     `:erlang.hibernate/3`)
-  - `{:disconnect, reason, new_state}`, causes a disocnnection.
+  - `{:disconnect, reason, new_state}`, causes a disconnection.
   - `{:stop, reason, new_state}` terminates the loop, passing `new_state`
     to `c:terminate/2`, if it's implemented.
   """
@@ -604,7 +604,7 @@ defmodule Erps.Client do
   see: `c:GenServer.handle_info/2`.
 
   ### Return codes
-  see return codes for `c:handle_push/2`/2`
+  see return codes for `c:handle_push/2`
   """
   @callback handle_info(msg :: :timeout | term, state :: term) :: noreply_response
 
