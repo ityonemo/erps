@@ -73,10 +73,11 @@
 - implementation of `Multiverse` testing strategy.
 - added `:forward_callers` option to client and server.
 
-## 0.5.3
+## 0.6.0
 
 - implementation of `Erps.is_remote` guard
 - implementation of `Erps.Client.handle_connect` callback
+- Multiverses version bump
 
 ## Planned features:
 
