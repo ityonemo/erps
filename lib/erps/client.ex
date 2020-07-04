@@ -308,11 +308,21 @@ defmodule Erps.Client do
 
   defp connect_impl(state = %{module: module}) do
     if function_exported?(module, :handle_connect, 2) do
-      module.handle_connect(state.socket, state.data)
+      state.socket
+      |> module.handle_connect(state.data)
+      |> process_connect(state)
     else
       {:ok, state}
     end
   end
+
+  defp process_connect({:ok, result}, state) do
+    {:ok, %{state | data: result}}
+  end
+  defp process_connect({:error, msg}, state) do
+    {:stop, msg, state}
+  end
+
 
   @impl true
   def disconnect(_, state) do
@@ -572,7 +582,8 @@ defmodule Erps.Client do
   called when a connection has been successfully established.
 
   ### Return codes
-  see return codes for `c:handle_push/2`
+  - `{:ok, state}` update the state of the connection.
+  - `{:error, reason}` stop the connection, with reason `reason`.
   """
   @callback handle_connect(socket :: Transport.socket, state :: term) :: noreply_response
 
