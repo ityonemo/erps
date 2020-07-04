@@ -11,7 +11,7 @@ The package can be installed by adding `erps` to your list of dependencies in `m
 ```elixir
 def deps do
   [
-    {:erps, "~> 0.6.0"}
+    {:erps, "~> 0.6.1"}
   ]
 end
 ```
