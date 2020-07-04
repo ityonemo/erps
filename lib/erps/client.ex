@@ -439,7 +439,7 @@ defmodule Erps.Client do
 
   @impl true
   @spec handle_info(info :: term, state) :: noreply
-  def handle_info(:recv, state = %{transport: transport, socket: socket}) do
+  def handle_info(:"$recv", state = %{transport: transport, socket: socket}) do
     recv_loop()
     case Packet.get_data(transport, socket, state.decode_opts)  do
       {:error, :timeout} ->
@@ -501,7 +501,7 @@ defmodule Erps.Client do
   @recv_timeout 100
 
   defp recv_loop do
-    Process.send_after(self(), :recv, @recv_timeout)
+    Process.send_after(self(), :"$recv", @recv_timeout)
   end
 
   defp keepalive_loop(state) do
