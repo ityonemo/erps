@@ -4,7 +4,7 @@ defmodule Erps.MixProject do
   def project do
     [
       app: :erps,
-      version: "0.6.1",
+      version: "0.7.0",
       elixir: "~> 1.10",
       description: "TLS-based remote protocol (call/cast) server",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -29,7 +29,7 @@ defmodule Erps.MixProject do
     {:dialyxir, "~> 0.5.1", only: :dev, runtime: false},
     {:ex_doc, "~> 0.20.2", only: :dev, runtime: false},
     {:excoveralls, "~> 0.11.1", only: :test},
-    {:multiverses, "~> 0.6.0", runtime: false},
+    {:multiverses, "~> 0.7.0", runtime: (Mix.env == :test)},
 
     # abstracts services which are connections
     {:connection, "~> 1.0"},

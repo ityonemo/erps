@@ -83,6 +83,10 @@
 
 - fix bug and docs in `Erps.Client.handle_connect/2` callback
 
+## 0.7.0
+
+- update for use with Multiverses 0.7.0
+
 ## Planned features:
 
 - reactivation of HMAC signing with better crypto tests
